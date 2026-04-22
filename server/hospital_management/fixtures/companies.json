@@ -1,0 +1,44 @@
+[
+  {
+    "model": "hospital_management.company",
+    "pk": 1,
+    "fields": {
+      "name": "MediCore Hospitals",
+      "code": "MEDICORE",
+      "admin_user_name": "medicore_admin",
+      "email": "hello@medicore.example",
+      "password": "abc123",
+      "phone": "+1-555-0100",
+      "address": "123 Wellness Avenue",
+      "city": "Healthville",
+      "state": "California",
+      "country": "USA",
+      "is_active": true,
+      "created_by": "system",
+      "created_on": "2024-01-01T10:00:00Z",
+      "updated_by": "system",
+      "updated_on": "2024-01-01T10:00:00Z"
+    }
+  },
+  {
+    "model": "hospital_management.company",
+    "pk": 2,
+    "fields": {
+      "name": "CareFirst Clinics",
+      "code": "CAREFIRST",
+      "admin_user_name": "carefirst_admin",
+      "email": "contact@carefirst.example",
+      "password": "abc123",
+      "phone": "+1-555-0105",
+      "address": "9 Harmony Street",
+      "city": "Cure City",
+      "state": "Texas",
+      "country": "USA",
+      "is_active": true,
+      "created_by": "system",
+      "created_on": "2024-01-01T10:00:00Z",
+      "updated_by": "system",
+      "updated_on": "2024-01-01T10:00:00Z"
+    }
+  }
+]

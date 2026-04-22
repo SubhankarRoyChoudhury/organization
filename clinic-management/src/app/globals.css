@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+:root {
+  --background: #eaf1f4;
+  --foreground: #0b1720;
+  --surface: rgba(255, 255, 255, 0.84);
+  --surface-strong: #ffffff;
+  --surface-dark: #0f1720;
+  --line: rgba(111, 138, 155, 0.2);
+  --accent: #0f766e;
+  --accent-strong: #155e75;
+  --mint: #d4f7ef;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-dark: var(--surface-dark);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-mint: var(--mint);
+  --font-sans: var(--font-body);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  width: 100%;
+  min-width: 100vw;
+  height: 100%;
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), sans-serif;
+  background-image:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.2), transparent 24%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.16), transparent 22%),
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.72), transparent 30%),
+    linear-gradient(180deg, #eef5f7 0%, #e3edf2 100%);
+}
+
+#__next {
+  width: 100%;
+  height: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 118, 110, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.28);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.2);
+}
+
+.display-font {
+  font-family: var(--font-display), serif;
+}
+
+.glass-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 80px rgba(12, 23, 37, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.dash-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: -1px -1px;
+}
+
+.clinic-noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    radial-gradient(rgba(15, 23, 32, 0.22) 0.6px, transparent 0.6px);
+  background-size: 10px 10px;
+  mix-blend-mode: soft-light;
+}

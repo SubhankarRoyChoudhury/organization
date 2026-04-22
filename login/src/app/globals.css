@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --app-shell-background: linear-gradient(180deg, #f8fafc 0%, #ffffff 45%, #e2e8f0 100%);
+  --app-header-height: 74px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  min-height: 100%;
+  background: #f8fafc;
+}
+
+body {
+  margin: 0;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding-top: var(--app-header-height, 74px);
+  background: var(--app-shell-background);
+}
+
+body.app-header-hidden .app-shell {
+  padding-top: 0;
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    transition: padding-left 300ms ease;
+  }
+
+  body.school-sidebar-enabled .app-shell {
+    padding-left: 18rem;
+  }
+
+  body.school-sidebar-enabled.school-sidebar-collapsed .app-shell {
+    padding-left: 5rem;
+  }
+}
+
+@keyframes waveSlide {
+  0% {
+    transform: translateX(0) translateZ(0);
+  }
+  50% {
+    transform: translateX(-6%) translateZ(0);
+  }
+  100% {
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+@keyframes waveRise {
+  0% {
+    transform: translateX(0) translateZ(0);
+  }
+  50% {
+    transform: translateX(6%) translateZ(0);
+  }
+  100% {
+    transform: translateX(0) translateZ(0);
+  }
+}
+
+.wave-motion {
+  animation: waveSlide 14s ease-in-out infinite;
+}
+
+.wave-motion-delayed {
+  animation: waveRise 18s ease-in-out infinite;
+}

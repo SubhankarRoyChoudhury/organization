@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#0f766e" />
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="60" fill="url(#bg)" />
+  <g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="5">
+    <path d="M24 50 60 34l36 16" />
+    <path d="M30 52v33h60V52" />
+    <path d="M45 85V66h30v19" />
+    <path d="M40 58h0M80 58h0" />
+  </g>
+  <text x="60" y="102" fill="#ffffff" font-family="Arial, sans-serif" font-size="14" font-weight="700" text-anchor="middle">
+    SCHOOL
+  </text>
+</svg>
