@@ -16,7 +16,7 @@ from google.oauth2 import id_token
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated
-from custom_commands.management.commands.createdefaultpermissiongroups import createDefaultUserGroup
+# from custom_commands.management.commands.createdefaultpermissiongroups import createDefaultUserGroup
 from django.conf import settings
 import math
 from rest_framework import status
@@ -50,8 +50,8 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.permissions import AllowAny, IsAuthenticated
 import filetype
 import logging
-from history_management.views import createHistoryForUpdate, getEntityDetails
-from project_management.views import getAllJobLocations
+# from history_management.views import createHistoryForUpdate, getEntityDetails
+# from project_management.views import getAllJobLocations
 from company_account.serializers import AgreeDisclaimerSerializer, CompaniesSerializer
 from shared.views import activate_company, get_company_id, getImageAsBase64, getImageFromFileName, hash_string, reset_link, send_otp, sendGenericMailV2
 from django.http import HttpResponse
@@ -1106,39 +1106,39 @@ def changeActivityCompanyUsers(request):
         return Response(e.args[0])
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def changeUserRightOfCompanyUsers(request):
-    company_id = getCompanyId(request)
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def changeUserRightOfCompanyUsers(request):
+#     company_id = getCompanyId(request)
 
-    users = json.loads(request.data['users'])
-    for d in users:
-        try:
+#     users = json.loads(request.data['users'])
+#     for d in users:
+#         try:
 
-            # Getting old entity snapshot
-            before_changed = getEntityDetails(
-                'account', 'CompanyUser', d['id'])
+#             # Getting old entity snapshot
+#             before_changed = getEntityDetails(
+#                 'account', 'CompanyUser', d['id'])
 
-            CompanyUser.objects.filter(
-                id=d['id']
-            ).update(
-                is_admin=d['is_admin'],
-                is_manager=d['is_manager'],
-                is_assistant=d['is_assistant'],
-            )
+#             CompanyUser.objects.filter(
+#                 id=d['id']
+#             ).update(
+#                 is_admin=d['is_admin'],
+#                 is_manager=d['is_manager'],
+#                 is_assistant=d['is_assistant'],
+#             )
 
-            # Getting new entity snapshot
-            after_changed = getEntityDetails(
-                'account', 'CompanyUser', d['id'])
+#             # Getting new entity snapshot
+#             after_changed = getEntityDetails(
+#                 'account', 'CompanyUser', d['id'])
 
-            # creating History
-            createHistoryForUpdate(request, 'account', 'CompanyUser',
-                                   d['id'], company_id, before_changed, after_changed, request.data)
+#             # creating History
+#             createHistoryForUpdate(request, 'account', 'CompanyUser',
+#                                    d['id'], company_id, before_changed, after_changed, request.data)
 
-        except Exception as e:
-            print(e.args[0])
+#         except Exception as e:
+#             print(e.args[0])
 
-    return Response()
+#     return Response()
 
 
 # @api_view(['GET', 'POST'])
@@ -2100,122 +2100,122 @@ def getAllCurrentCompanies(request):
         return Response({'error': str(e)}, status=500)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def updateCompanyInfo(request):
-    company_id = getCompanyId(request)
-    form_data = json.loads(request.data['form_data'])
-    print('form_data -> ', form_data)
-    try:
-        statutory_fields = [
-            'desc',
-            'registration_no',
-            'renewed_type',
-            'since',
-            'renewal_date',
-            'note',
-        ]
-        statutory_payload = {
-            key: form_data.pop(key)
-            for key in statutory_fields
-            if key in form_data
-        }
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def updateCompanyInfo(request):
+#     company_id = getCompanyId(request)
+#     form_data = json.loads(request.data['form_data'])
+#     print('form_data -> ', form_data)
+#     try:
+#         statutory_fields = [
+#             'desc',
+#             'registration_no',
+#             'renewed_type',
+#             'since',
+#             'renewal_date',
+#             'note',
+#         ]
+#         statutory_payload = {
+#             key: form_data.pop(key)
+#             for key in statutory_fields
+#             if key in form_data
+#         }
 
-        # Getting old entity snapshot
-        before_changed = getEntityDetails(
-            'account', 'CompanyInfo', form_data['id'])
+#         # Getting old entity snapshot
+#         before_changed = getEntityDetails(
+#             'account', 'CompanyInfo', form_data['id'])
 
-        company_info = CompanyInfo.objects.filter(
-            id=form_data['id']
-        ).values('id', 'company_id', 'statutory_id').first()
+#         company_info = CompanyInfo.objects.filter(
+#             id=form_data['id']
+#         ).values('id', 'company_id', 'statutory_id').first()
 
-        if company_info and not form_data.get('company_id'):
-            form_data['company_id'] = company_info['company_id']
+#         if company_info and not form_data.get('company_id'):
+#             form_data['company_id'] = company_info['company_id']
 
-        queryset = CompanyInfo.objects.filter(
-            id=form_data['id']
-        ).update(**form_data)
+#         queryset = CompanyInfo.objects.filter(
+#             id=form_data['id']
+#         ).update(**form_data)
 
-        # Getting old entity snapshot
-        after_changed = getEntityDetails(
-            'account', 'CompanyInfo', form_data['id'])
+#         # Getting old entity snapshot
+#         after_changed = getEntityDetails(
+#             'account', 'CompanyInfo', form_data['id'])
 
-        # creating History
-        createHistoryForUpdate(request, 'account', 'CompanyInfo',
-                               form_data['id'], company_id, before_changed, after_changed, request.data)
+#         # creating History
+#         createHistoryForUpdate(request, 'account', 'CompanyInfo',
+#                                form_data['id'], company_id, before_changed, after_changed, request.data)
 
-        if statutory_payload and company_info:
-            statutory_id = company_info.get('statutory_id')
-            if statutory_id:
-                StatutoryRegister.objects.filter(
-                    id=statutory_id
-                ).update(**statutory_payload)
-            else:
-                statutory_payload['company_id'] = company_info['company_id']
-                statutory_record = StatutoryRegister.objects.create(
-                    **statutory_payload
-                )
-                CompanyInfo.objects.filter(
-                    id=form_data['id']
-                ).update(statutory_id=statutory_record.id)
+#         if statutory_payload and company_info:
+#             statutory_id = company_info.get('statutory_id')
+#             if statutory_id:
+#                 StatutoryRegister.objects.filter(
+#                     id=statutory_id
+#                 ).update(**statutory_payload)
+#             else:
+#                 statutory_payload['company_id'] = company_info['company_id']
+#                 statutory_record = StatutoryRegister.objects.create(
+#                     **statutory_payload
+#                 )
+#                 CompanyInfo.objects.filter(
+#                     id=form_data['id']
+#                 ).update(statutory_id=statutory_record.id)
 
-        # Create Or Update Head Office Location
+#         # Create Or Update Head Office Location
 
-        location_name = str(form_data.get('location') or '').strip() or 'Head Office'
-        existing_location = Location.objects.filter(
-            company_id=form_data.get('company_id')
-        ).order_by('id').first()
+#         location_name = str(form_data.get('location') or '').strip() or 'Head Office'
+#         existing_location = Location.objects.filter(
+#             company_id=form_data.get('company_id')
+#         ).order_by('id').first()
 
-        if existing_location:
-            pin_value = form_data.get('pin')
-            if pin_value in (None, ''):
-                pin_value = existing_location.pin
+#         if existing_location:
+#             pin_value = form_data.get('pin')
+#             if pin_value in (None, ''):
+#                 pin_value = existing_location.pin
 
-            try:
-                resolved_pin = int(str(pin_value).strip()) if pin_value not in (None, '') else existing_location.pin
-            except Exception:
-                resolved_pin = existing_location.pin
+#             try:
+#                 resolved_pin = int(str(pin_value).strip()) if pin_value not in (None, '') else existing_location.pin
+#             except Exception:
+#                 resolved_pin = existing_location.pin
 
-            existing_location.name = location_name or existing_location.name
-            existing_location.state = str(
-                form_data.get('head_office_state')
-                or form_data.get('state')
-                or existing_location.state
-                or ''
-            ).strip()
-            existing_location.city = str(
-                form_data.get('city')
-                or form_data.get('district')
-                or existing_location.city
-                or location_name
-            ).strip()
-            existing_location.pin = resolved_pin
-            existing_location.address = str(
-                form_data.get('address')
-                or existing_location.address
-                or ''
-            ).strip()
-            existing_location.note = str(
-                form_data.get('comments')
-                or existing_location.note
-                or ''
-            ).strip()
-            existing_location.country = str(
-                form_data.get('country')
-                or existing_location.country
-                or ''
-            ).strip()
-            existing_location.created_by = getattr(
-                request.user, 'username', ''
-            ) or existing_location.created_by
-            existing_location.created_on = existing_location.created_on or datetime.datetime.now()
-            existing_location.save()
+#             existing_location.name = location_name or existing_location.name
+#             existing_location.state = str(
+#                 form_data.get('head_office_state')
+#                 or form_data.get('state')
+#                 or existing_location.state
+#                 or ''
+#             ).strip()
+#             existing_location.city = str(
+#                 form_data.get('city')
+#                 or form_data.get('district')
+#                 or existing_location.city
+#                 or location_name
+#             ).strip()
+#             existing_location.pin = resolved_pin
+#             existing_location.address = str(
+#                 form_data.get('address')
+#                 or existing_location.address
+#                 or ''
+#             ).strip()
+#             existing_location.note = str(
+#                 form_data.get('comments')
+#                 or existing_location.note
+#                 or ''
+#             ).strip()
+#             existing_location.country = str(
+#                 form_data.get('country')
+#                 or existing_location.country
+#                 or ''
+#             ).strip()
+#             existing_location.created_by = getattr(
+#                 request.user, 'username', ''
+#             ) or existing_location.created_by
+#             existing_location.created_on = existing_location.created_on or datetime.datetime.now()
+#             existing_location.save()
 
-        return Response({'response': 'Updated Successfully'}, status=status.HTTP_200_OK)
-    except Exception as e:
-        logging.getLogger("error_logger").error(repr(e))
-        print('Error occured as => \n', e.args)
-        return Response(e, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#         return Response({'response': 'Updated Successfully'}, status=status.HTTP_200_OK)
+#     except Exception as e:
+#         logging.getLogger("error_logger").error(repr(e))
+#         print('Error occured as => \n', e.args)
+#         return Response(e, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])
@@ -4247,239 +4247,239 @@ def checkHomePageIntoRemovedUrlAccess(removed_url_list: list, user_id: int, grou
         )
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def giveDefaultPermission(request):
-    """
-    Expects JSON like:
-    {
-      "access_token": "...",
-      "permission_json": {
-         "user_id": 36,
-         "user_group_id": 0,
-         "segmented_url": ["inventory-management","asset-management",...],
-         "access": true,
-         "read": true,
-         "add": false,
-         ...
-         "home_page": false
-       }
-    }
-    """
-    # 1) Load incoming permission_json
-    raw = request.data.get('permission_json')
-    if isinstance(raw, str):
-        try:
-            perm = json.loads(raw)
-        except json.JSONDecodeError as e:
-            print(f"Invalid JSON in permission_json: {e}")
-    elif isinstance(raw, dict):
-        perm = raw
-    else:
-        print("permission_json must be a JSON string or object")
+# @api_view(['POST'])
+# @permission_classes([AllowAny])
+# def giveDefaultPermission(request):
+#     """
+#     Expects JSON like:
+#     {
+#       "access_token": "...",
+#       "permission_json": {
+#          "user_id": 36,
+#          "user_group_id": 0,
+#          "segmented_url": ["inventory-management","asset-management",...],
+#          "access": true,
+#          "read": true,
+#          "add": false,
+#          ...
+#          "home_page": false
+#        }
+#     }
+#     """
+#     # 1) Load incoming permission_json
+#     raw = request.data.get('permission_json')
+#     if isinstance(raw, str):
+#         try:
+#             perm = json.loads(raw)
+#         except json.JSONDecodeError as e:
+#             print(f"Invalid JSON in permission_json: {e}")
+#     elif isinstance(raw, dict):
+#         perm = raw
+#     else:
+#         print("permission_json must be a JSON string or object")
 
-    # 2) Extract the list of base URLs and pop the one‐off fields
-    bases = perm.pop('segmented_url', [])
-    read_flag = perm.pop('read', None)       # you said you drop this
-    home_page_flag = perm.pop('home_page', False)
-    perm.pop('id',       None)                   # never send id into create()
+#     # 2) Extract the list of base URLs and pop the one‐off fields
+#     bases = perm.pop('segmented_url', [])
+#     read_flag = perm.pop('read', None)       # you said you drop this
+#     home_page_flag = perm.pop('home_page', False)
+#     perm.pop('id',       None)                   # never send id into create()
 
-    # 3) Normalize numeric zero → None
-    if perm.get('user_id') == 0:
-        perm['user_id'] = None
-    if perm.get('user_group_id') == 0:
-        perm['user_group_id'] = None
+#     # 3) Normalize numeric zero → None
+#     if perm.get('user_id') == 0:
+#         perm['user_id'] = None
+#     if perm.get('user_group_id') == 0:
+#         perm['user_group_id'] = None
 
-    # 4) Company context
-    company_id = getCompanyId(request)
+#     # 4) Company context
+#     company_id = getCompanyId(request)
 
-    # 5) Build a "template" dict of kwargs (without weburl/id)
-    template = {
-        **perm,
-        'company_id': company_id
-    }
+#     # 5) Build a "template" dict of kwargs (without weburl/id)
+#     template = {
+#         **perm,
+#         'company_id': company_id
+#     }
 
-    # 6) Walk each base URL
-    removed_pages = []
-    for base in bases:
-        # 6a) If home_page flag, create/update homepage for *this* base
-        if home_page_flag:
-            createOrUpdateHomePage(
-                base,
-                template.get('user_id'),
-                template.get('user_group_id')
-            )
+#     # 6) Walk each base URL
+#     removed_pages = []
+#     for base in bases:
+#         # 6a) If home_page flag, create/update homepage for *this* base
+#         if home_page_flag:
+#             createOrUpdateHomePage(
+#                 base,
+#                 template.get('user_id'),
+#                 template.get('user_group_id')
+#             )
 
-        # 6b) Gather this base + its children
-        # returns a QuerySet of url‐strings
-        children_qs = getChildUrls(base)
-        children = list(children_qs)
-        pages = [base] + children
+#         # 6b) Gather this base + its children
+#         # returns a QuerySet of url‐strings
+#         children_qs = getChildUrls(base)
+#         children = list(children_qs)
+#         pages = [base] + children
 
-        # 6c) Loop each page
-        for page in pages:
-            data_kwargs = template.copy()
-            data_kwargs['weburl'] = page
+#         # 6c) Loop each page
+#         for page in pages:
+#             data_kwargs = template.copy()
+#             data_kwargs['weburl'] = page
 
-            existing_id = UrlBasedAccessControl.objects.filter(
-                Q(company_id=company_id),
-                Q(user_id=data_kwargs['user_id']),
-                Q(user_group_id=data_kwargs['user_group_id']),
-                Q(weburl=page)
-            ).values_list('id', flat=True).first()
+#             existing_id = UrlBasedAccessControl.objects.filter(
+#                 Q(company_id=company_id),
+#                 Q(user_id=data_kwargs['user_id']),
+#                 Q(user_group_id=data_kwargs['user_group_id']),
+#                 Q(weburl=page)
+#             ).values_list('id', flat=True).first()
 
-            # 6c.i) Grant / update access
-            if data_kwargs.get('access'):
-                if existing_id:
-                    before = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', existing_id)
-                    UrlBasedAccessControl.objects.filter(
-                        id=existing_id).update(**data_kwargs)
-                    after = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', existing_id)
-                    createHistoryForUpdate(
-                        request, 'account', 'UrlBasedAccessControl',
-                        existing_id, company_id, before, after, request.data
-                    )
-                else:
-                    # No `id` in data_kwargs → safe to create
-                    UrlBasedAccessControl.objects.create(**data_kwargs)
+#             # 6c.i) Grant / update access
+#             if data_kwargs.get('access'):
+#                 if existing_id:
+#                     before = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', existing_id)
+#                     UrlBasedAccessControl.objects.filter(
+#                         id=existing_id).update(**data_kwargs)
+#                     after = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', existing_id)
+#                     createHistoryForUpdate(
+#                         request, 'account', 'UrlBasedAccessControl',
+#                         existing_id, company_id, before, after, request.data
+#                     )
+#                 else:
+#                     # No `id` in data_kwargs → safe to create
+#                     UrlBasedAccessControl.objects.create(**data_kwargs)
 
-            # 6c.ii) Revoke / delete access
-            else:
-                if existing_id:
-                    before = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', existing_id)
-                    UrlBasedAccessControl.objects.filter(
-                        id=existing_id).delete()
-                    after = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', existing_id)
-                    createHistoryForUpdate(
-                        request, 'account', 'UrlBasedAccessControl',
-                        existing_id, company_id, before, after, request.data
-                    )
+#             # 6c.ii) Revoke / delete access
+#             else:
+#                 if existing_id:
+#                     before = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', existing_id)
+#                     UrlBasedAccessControl.objects.filter(
+#                         id=existing_id).delete()
+#                     after = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', existing_id)
+#                     createHistoryForUpdate(
+#                         request, 'account', 'UrlBasedAccessControl',
+#                         existing_id, company_id, before, after, request.data
+#                     )
 
-                    removed_pages.append(page)
-                    parent = check_parent_for_brothers_in_law(data_kwargs)
-                    if parent:
-                        removed_pages.append(parent)
+#                     removed_pages.append(page)
+#                     parent = check_parent_for_brothers_in_law(data_kwargs)
+#                     if parent:
+#                         removed_pages.append(parent)
 
-    # 7) Clean up home pages for *all* removed pages
-    checkHomePageIntoRemovedUrlAccess(
-        removed_pages,
-        template.get('user_id'),
-        template.get('user_group_id')
-    )
+#     # 7) Clean up home pages for *all* removed pages
+#     checkHomePageIntoRemovedUrlAccess(
+#         removed_pages,
+#         template.get('user_id'),
+#         template.get('user_group_id')
+#     )
 
-    return Response({'detail': 'Access permissions updated'}, status=200)
+#     return Response({'detail': 'Access permissions updated'}, status=200)
 
 
-def apply_default_permissions(payload: dict, company_id: int, actor_context=None):
-    """
-    payload may be either:
-      • { "permission_json": { … } , "company_id": … }    OR
-      • { … }  directly the inner permission_json
+# def apply_default_permissions(payload: dict, company_id: int, actor_context=None):
+#     """
+#     payload may be either:
+#       • { "permission_json": { … } , "company_id": … }    OR
+#       • { … }  directly the inner permission_json
 
-    company_id must be an int.  
-    actor_context is optional (you can pass request or None).
-    """
+#     company_id must be an int.  
+#     actor_context is optional (you can pass request or None).
+#     """
 
-    # 1) unwrap if they passed the outer wrapper
-    if "permission_json" in payload:
-        perm = payload["permission_json"]
-    else:
-        perm = payload
+#     # 1) unwrap if they passed the outer wrapper
+#     if "permission_json" in payload:
+#         perm = payload["permission_json"]
+#     else:
+#         perm = payload
 
-    # 2) If they gave you a JSON‐string, parse it
-    if isinstance(perm, str):
-        perm = json.loads(perm)
-    else:
-        perm = perm.copy()    # so we don’t mutate the caller’s dict
+#     # 2) If they gave you a JSON‐string, parse it
+#     if isinstance(perm, str):
+#         perm = json.loads(perm)
+#     else:
+#         perm = perm.copy()    # so we don’t mutate the caller’s dict
 
-    # 3) Peel off one‐time fields
-    bases = perm.pop("segmented_url", [])
-    perm.pop("read",       None)
-    home_flag = perm.pop("home_page", False)
-    perm.pop("id",         None)   # never send id into create()
+#     # 3) Peel off one‐time fields
+#     bases = perm.pop("segmented_url", [])
+#     perm.pop("read",       None)
+#     home_flag = perm.pop("home_page", False)
+#     perm.pop("id",         None)   # never send id into create()
 
-    # 4) Normalize zeros → None
-    if perm.get("user_id") == 0:
-        perm["user_id"] = None
-    if perm.get("user_group_id") == 0:
-        perm["user_group_id"] = None
+#     # 4) Normalize zeros → None
+#     if perm.get("user_id") == 0:
+#         perm["user_id"] = None
+#     if perm.get("user_group_id") == 0:
+#         perm["user_group_id"] = None
 
-    # 5) Build a template of kwargs
-    template = {**perm, "company_id": company_id}
-    removed = []
+#     # 5) Build a template of kwargs
+#     template = {**perm, "company_id": company_id}
+#     removed = []
 
-    # 6) Loop each base URL
-    for base in bases:
-        # 6a) optionally set home‐page on the base
-        if home_flag:
-            createOrUpdateHomePage(
-                base,
-                template.get("user_id"),
-                template.get("user_group_id")
-            )
+#     # 6) Loop each base URL
+#     for base in bases:
+#         # 6a) optionally set home‐page on the base
+#         if home_flag:
+#             createOrUpdateHomePage(
+#                 base,
+#                 template.get("user_id"),
+#                 template.get("user_group_id")
+#             )
 
-        # 6b) base + its children
-        children = list(getChildUrls(base))
-        pages = [base] + children
+#         # 6b) base + its children
+#         children = list(getChildUrls(base))
+#         pages = [base] + children
 
-        # 6c) grant/update or revoke/delete
-        for page in pages:
-            data_kwargs = template.copy()
-            data_kwargs["weburl"] = page
+#         # 6c) grant/update or revoke/delete
+#         for page in pages:
+#             data_kwargs = template.copy()
+#             data_kwargs["weburl"] = page
 
-            existing_id = UrlBasedAccessControl.objects.filter(
-                Q(company_id=company_id),
-                Q(user_id=data_kwargs["user_id"]),
-                Q(user_group_id=data_kwargs["user_group_id"]),
-                Q(weburl=page)
-            ).values_list("id", flat=True).first()
+#             existing_id = UrlBasedAccessControl.objects.filter(
+#                 Q(company_id=company_id),
+#                 Q(user_id=data_kwargs["user_id"]),
+#                 Q(user_group_id=data_kwargs["user_group_id"]),
+#                 Q(weburl=page)
+#             ).values_list("id", flat=True).first()
 
-            # grant/update
-            if data_kwargs.get("access"):
-                if existing_id:
-                    before = getEntityDetails(
-                        "account", "UrlBasedAccessControl", existing_id)
-                    UrlBasedAccessControl.objects.filter(
-                        id=existing_id).update(**data_kwargs)
-                    after = getEntityDetails(
-                        "account", "UrlBasedAccessControl", existing_id)
-                    createHistoryForUpdate(
-                        actor_context,
-                        "account", "UrlBasedAccessControl",
-                        existing_id, company_id, before, after, data_kwargs
-                    )
-                else:
-                    UrlBasedAccessControl.objects.create(**data_kwargs)
+#             # grant/update
+#             if data_kwargs.get("access"):
+#                 if existing_id:
+#                     before = getEntityDetails(
+#                         "account", "UrlBasedAccessControl", existing_id)
+#                     UrlBasedAccessControl.objects.filter(
+#                         id=existing_id).update(**data_kwargs)
+#                     after = getEntityDetails(
+#                         "account", "UrlBasedAccessControl", existing_id)
+#                     createHistoryForUpdate(
+#                         actor_context,
+#                         "account", "UrlBasedAccessControl",
+#                         existing_id, company_id, before, after, data_kwargs
+#                     )
+#                 else:
+#                     UrlBasedAccessControl.objects.create(**data_kwargs)
 
-            # revoke/delete
-            else:
-                if existing_id:
-                    before = getEntityDetails(
-                        "account", "UrlBasedAccessControl", existing_id)
-                    UrlBasedAccessControl.objects.filter(
-                        id=existing_id).delete()
-                    after = getEntityDetails(
-                        "account", "UrlBasedAccessControl", existing_id)
-                    createHistoryForUpdate(
-                        actor_context,
-                        "account", "UrlBasedAccessControl",
-                        existing_id, company_id, before, after, data_kwargs
-                    )
-                    removed.append(page)
-                    parent = check_parent_for_brothers_in_law(data_kwargs)
-                    if parent:
-                        removed.append(parent)
+#             # revoke/delete
+#             else:
+#                 if existing_id:
+#                     before = getEntityDetails(
+#                         "account", "UrlBasedAccessControl", existing_id)
+#                     UrlBasedAccessControl.objects.filter(
+#                         id=existing_id).delete()
+#                     after = getEntityDetails(
+#                         "account", "UrlBasedAccessControl", existing_id)
+#                     createHistoryForUpdate(
+#                         actor_context,
+#                         "account", "UrlBasedAccessControl",
+#                         existing_id, company_id, before, after, data_kwargs
+#                     )
+#                     removed.append(page)
+#                     parent = check_parent_for_brothers_in_law(data_kwargs)
+#                     if parent:
+#                         removed.append(parent)
 
-    # 7) Cleanup any orphaned home‐pages
-    checkHomePageIntoRemovedUrlAccess(
-        removed,
-        template.get("user_id"),
-        template.get("user_group_id")
-    )
+#     # 7) Cleanup any orphaned home‐pages
+#     checkHomePageIntoRemovedUrlAccess(
+#         removed,
+#         template.get("user_id"),
+#         template.get("user_group_id")
+#     )
 
 
 # @api_view(['POST'])
@@ -4661,236 +4661,236 @@ ACL_FIELDS = {
 }
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def updateAccessControl(request):
-    """
-    Expects request.data['permission_json'] as JSON string with keys:
-      user_id, user_group_id, segmented_url (list), access, add, edit, delete,
-      print_download, home_page (bool)
-    """
-    company_id = getCompanyId(request)
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def updateAccessControl(request):
+#     """
+#     Expects request.data['permission_json'] as JSON string with keys:
+#       user_id, user_group_id, segmented_url (list), access, add, edit, delete,
+#       print_download, home_page (bool)
+#     """
+#     company_id = getCompanyId(request)
 
-    # 1) Parse JSON
-    raw = request.data.get('permission_json', '{}')
-    try:
-        perm = json.loads(raw)
-    except ValueError:
-        return Response({'error': 'Invalid JSON'}, status=status.HTTP_400_BAD_REQUEST)
+#     # 1) Parse JSON
+#     raw = request.data.get('permission_json', '{}')
+#     try:
+#         perm = json.loads(raw)
+#     except ValueError:
+#         return Response({'error': 'Invalid JSON'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2) Flatten segmented_url → weburl
-    seg = perm.pop('segmented_url', None)
-    if not isinstance(seg, (list, tuple)):
-        return Response({'error': 'segmented_url must be a list'},
-                        status=status.HTTP_400_BAD_REQUEST)
-    perm['weburl'] = '/'.join(seg)
+#     # 2) Flatten segmented_url → weburl
+#     seg = perm.pop('segmented_url', None)
+#     if not isinstance(seg, (list, tuple)):
+#         return Response({'error': 'segmented_url must be a list'},
+#                         status=status.HTTP_400_BAD_REQUEST)
+#     perm['weburl'] = '/'.join(seg)
 
-    # 3) Home‐page toggle?
-    if perm.pop('home_page', False):
-        createOrUpdateHomePage(
-            perm['weburl'],
-            perm.get('user_id') or None,
-            perm.get('user_group_id') or None
-        )
+#     # 3) Home‐page toggle?
+#     if perm.pop('home_page', False):
+#         createOrUpdateHomePage(
+#             perm['weburl'],
+#             perm.get('user_id') or None,
+#             perm.get('user_group_id') or None
+#         )
 
-    # 4) Normalize IDs
-    perm['company_id'] = company_id
-    perm['user_id'] = perm.get('user_id') or None
-    perm['user_group_id'] = perm.get('user_group_id') or None
+#     # 4) Normalize IDs
+#     perm['company_id'] = company_id
+#     perm['user_id'] = perm.get('user_id') or None
+#     perm['user_group_id'] = perm.get('user_group_id') or None
 
-    # 5) Build a dict of only the real ACL columns
-    acl_defaults = {k: v for k, v in perm.items() if k in ACL_FIELDS}
+#     # 5) Build a dict of only the real ACL columns
+#     acl_defaults = {k: v for k, v in perm.items() if k in ACL_FIELDS}
 
-    # 6) Get all children of that URL
-    try:
-        children = getChildUrls(perm['weburl'])
-    except Exception as e:
-        logging.error(f"getChildUrls failed: {e}")
-        return Response({'error': 'Could not resolve child URLs'},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#     # 6) Get all children of that URL
+#     try:
+#         children = getChildUrls(perm['weburl'])
+#     except Exception as e:
+#         logging.error(f"getChildUrls failed: {e}")
+#         return Response({'error': 'Could not resolve child URLs'},
+#                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # 7) If group‐only, load its user_ids
-    target_user_ids = []
-    if perm['user_group_id'] and not perm['user_id']:
-        try:
-            grp = UserGroup.objects.get(
-                pk=perm['user_group_id'],
-                company_id=company_id
-            )
-        except UserGroup.DoesNotExist:
-            return Response({'error': 'UserGroup not found'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        target_user_ids = grp.user_ids
+#     # 7) If group‐only, load its user_ids
+#     target_user_ids = []
+#     if perm['user_group_id'] and not perm['user_id']:
+#         try:
+#             grp = UserGroup.objects.get(
+#                 pk=perm['user_group_id'],
+#                 company_id=company_id
+#             )
+#         except UserGroup.DoesNotExist:
+#             return Response({'error': 'UserGroup not found'},
+#                             status=status.HTTP_400_BAD_REQUEST)
+#         target_user_ids = grp.user_ids
 
-    removed = []  # track deletions for possible homepage cleanup
+#     removed = []  # track deletions for possible homepage cleanup
 
-    # 8) Do it all in one transaction
-    with transaction.atomic():
-        for url in children:
-            # -------- USER-SPECIFIC BRANCH --------
-            if perm['user_id']:
-                user_filter = {
-                    'company_id':    company_id,
-                    'weburl':        url,
-                    'user_id':       perm['user_id'],
-                    'user_group_id': None,
-                }
+#     # 8) Do it all in one transaction
+#     with transaction.atomic():
+#         for url in children:
+#             # -------- USER-SPECIFIC BRANCH --------
+#             if perm['user_id']:
+#                 user_filter = {
+#                     'company_id':    company_id,
+#                     'weburl':        url,
+#                     'user_id':       perm['user_id'],
+#                     'user_group_id': None,
+#                 }
 
-                if acl_defaults.get('access'):
-                    # upsert user ACL
-                    obj, created = UrlBasedAccessControl.objects.update_or_create(
-                        defaults=acl_defaults,
-                        **user_filter
-                    )
-                    if not created:
-                        # log update
-                        before = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', obj.id)
-                        after = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', obj.id)
-                        createHistoryForUpdate(
-                            request,
-                            'account',
-                            'UrlBasedAccessControl',
-                            obj.id,
-                            company_id,
-                            before,
-                            after,
-                            request.data
-                        )
-                else:
-                    # delete user ACL
-                    qs = UrlBasedAccessControl.objects.filter(**user_filter)
-                    pk = qs.values_list('id', flat=True).first()
-                    if pk:
-                        before = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', pk)
-                        qs.delete()
-                        after = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', pk)
-                        createHistoryForUpdate(
-                            request,
-                            'account',
-                            'UrlBasedAccessControl',
-                            pk,
-                            company_id,
-                            before,
-                            after,
-                            request.data
-                        )
-                        removed.append(url)
+#                 if acl_defaults.get('access'):
+#                     # upsert user ACL
+#                     obj, created = UrlBasedAccessControl.objects.update_or_create(
+#                         defaults=acl_defaults,
+#                         **user_filter
+#                     )
+#                     if not created:
+#                         # log update
+#                         before = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', obj.id)
+#                         after = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', obj.id)
+#                         createHistoryForUpdate(
+#                             request,
+#                             'account',
+#                             'UrlBasedAccessControl',
+#                             obj.id,
+#                             company_id,
+#                             before,
+#                             after,
+#                             request.data
+#                         )
+#                 else:
+#                     # delete user ACL
+#                     qs = UrlBasedAccessControl.objects.filter(**user_filter)
+#                     pk = qs.values_list('id', flat=True).first()
+#                     if pk:
+#                         before = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', pk)
+#                         qs.delete()
+#                         after = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', pk)
+#                         createHistoryForUpdate(
+#                             request,
+#                             'account',
+#                             'UrlBasedAccessControl',
+#                             pk,
+#                             company_id,
+#                             before,
+#                             after,
+#                             request.data
+#                         )
+#                         removed.append(url)
 
-                # skip straight to next URL—never touch group templates
-                continue
+#                 # skip straight to next URL—never touch group templates
+#                 continue
 
-            # -------- GROUP‐SPECIFIC BRANCH --------
-            # (Here perm['user_id'] is None and perm['user_group_id'] is set)
+#             # -------- GROUP‐SPECIFIC BRANCH --------
+#             # (Here perm['user_id'] is None and perm['user_group_id'] is set)
 
-            # A) Template row
-            tpl_filter = {
-                'company_id':    company_id,
-                'weburl':        url,
-                'user_id':       None,
-                'user_group_id': perm['user_group_id'],
-            }
+#             # A) Template row
+#             tpl_filter = {
+#                 'company_id':    company_id,
+#                 'weburl':        url,
+#                 'user_id':       None,
+#                 'user_group_id': perm['user_group_id'],
+#             }
 
-            if acl_defaults.get('access'):
-                tpl_obj, tpl_created = UrlBasedAccessControl.objects.update_or_create(
-                    defaults=acl_defaults,
-                    **tpl_filter
-                )
-                if not tpl_created:
-                    before = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', tpl_obj.id)
-                    after = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', tpl_obj.id)
-                    createHistoryForUpdate(
-                        request,
-                        'account',
-                        'UrlBasedAccessControl',
-                        tpl_obj.id,
-                        company_id,
-                        before,
-                        after,
-                        request.data
-                    )
-            else:
-                qs = UrlBasedAccessControl.objects.filter(**tpl_filter)
-                tpl_id = qs.values_list('id', flat=True).first()
-                if tpl_id:
-                    before = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', tpl_id)
-                    qs.delete()
-                    after = getEntityDetails(
-                        'account', 'UrlBasedAccessControl', tpl_id)
-                    createHistoryForUpdate(
-                        request,
-                        'account',
-                        'UrlBasedAccessControl',
-                        tpl_id,
-                        company_id,
-                        before,
-                        after,
-                        request.data
-                    )
-                    removed.append(url)
+#             if acl_defaults.get('access'):
+#                 tpl_obj, tpl_created = UrlBasedAccessControl.objects.update_or_create(
+#                     defaults=acl_defaults,
+#                     **tpl_filter
+#                 )
+#                 if not tpl_created:
+#                     before = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', tpl_obj.id)
+#                     after = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', tpl_obj.id)
+#                     createHistoryForUpdate(
+#                         request,
+#                         'account',
+#                         'UrlBasedAccessControl',
+#                         tpl_obj.id,
+#                         company_id,
+#                         before,
+#                         after,
+#                         request.data
+#                     )
+#             else:
+#                 qs = UrlBasedAccessControl.objects.filter(**tpl_filter)
+#                 tpl_id = qs.values_list('id', flat=True).first()
+#                 if tpl_id:
+#                     before = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', tpl_id)
+#                     qs.delete()
+#                     after = getEntityDetails(
+#                         'account', 'UrlBasedAccessControl', tpl_id)
+#                     createHistoryForUpdate(
+#                         request,
+#                         'account',
+#                         'UrlBasedAccessControl',
+#                         tpl_id,
+#                         company_id,
+#                         before,
+#                         after,
+#                         request.data
+#                     )
+#                     removed.append(url)
 
-            # B) Propagate to every user in that group
-            for uid in target_user_ids:
-                user_filter = {
-                    'company_id':    company_id,
-                    'weburl':        url,
-                    'user_id':       uid,
-                    'user_group_id': None,
-                }
+#             # B) Propagate to every user in that group
+#             for uid in target_user_ids:
+#                 user_filter = {
+#                     'company_id':    company_id,
+#                     'weburl':        url,
+#                     'user_id':       uid,
+#                     'user_group_id': None,
+#                 }
 
-                if acl_defaults.get('access'):
-                    usr_obj, usr_created = UrlBasedAccessControl.objects.update_or_create(
-                        defaults=acl_defaults,
-                        **user_filter
-                    )
-                    if not usr_created:
-                        before = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', usr_obj.id)
-                        after = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', usr_obj.id)
-                        createHistoryForUpdate(
-                            request,
-                            'account',
-                            'UrlBasedAccessControl',
-                            usr_obj.id,
-                            company_id,
-                            before,
-                            after,
-                            request.data
-                        )
-                else:
-                    uqs = UrlBasedAccessControl.objects.filter(**user_filter)
-                    uid_pk = uqs.values_list('id', flat=True).first()
-                    if uid_pk:
-                        before = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', uid_pk)
-                        uqs.delete()
-                        after = getEntityDetails(
-                            'account', 'UrlBasedAccessControl', uid_pk)
-                        createHistoryForUpdate(
-                            request,
-                            'account',
-                            'UrlBasedAccessControl',
-                            uid_pk,
-                            company_id,
-                            before,
-                            after,
-                            request.data
-                        )
-                        removed.append(url)
+#                 if acl_defaults.get('access'):
+#                     usr_obj, usr_created = UrlBasedAccessControl.objects.update_or_create(
+#                         defaults=acl_defaults,
+#                         **user_filter
+#                     )
+#                     if not usr_created:
+#                         before = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', usr_obj.id)
+#                         after = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', usr_obj.id)
+#                         createHistoryForUpdate(
+#                             request,
+#                             'account',
+#                             'UrlBasedAccessControl',
+#                             usr_obj.id,
+#                             company_id,
+#                             before,
+#                             after,
+#                             request.data
+#                         )
+#                 else:
+#                     uqs = UrlBasedAccessControl.objects.filter(**user_filter)
+#                     uid_pk = uqs.values_list('id', flat=True).first()
+#                     if uid_pk:
+#                         before = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', uid_pk)
+#                         uqs.delete()
+#                         after = getEntityDetails(
+#                             'account', 'UrlBasedAccessControl', uid_pk)
+#                         createHistoryForUpdate(
+#                             request,
+#                             'account',
+#                             'UrlBasedAccessControl',
+#                             uid_pk,
+#                             company_id,
+#                             before,
+#                             after,
+#                             request.data
+#                         )
+#                         removed.append(url)
 
-        # 9) Optionally clean up home pages or parents
-        # check_parent_for_brothers_in_law(...)
-        # checkHomePageIntoRemovedUrlAccess(removed, perm['user_id'], perm['user_group_id'])
+#         # 9) Optionally clean up home pages or parents
+#         # check_parent_for_brothers_in_law(...)
+#         # checkHomePageIntoRemovedUrlAccess(removed, perm['user_id'], perm['user_group_id'])
 
-    return Response({'response': 'Access permissions updated'},
-                    status=status.HTTP_200_OK)
+#     return Response({'response': 'Access permissions updated'},
+#                     status=status.HTTP_200_OK)
 
 
 def getHomePage(access_for: str, user_or_group_id: str, url: str) -> str:
@@ -5465,17 +5465,17 @@ def getUsersImage(request):
         return Response({'msg': str(e.args)}, status=500)
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def getAllLocations(request):
-    try:
-        locations = getAllJobLocations(request)
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def getAllLocations(request):
+#     try:
+#         locations = getAllJobLocations(request)
 
-        return Response({'response': locations}, status=200)
-    except Exception as e:
-        logging.getLogger("error_logger").error(repr(e))
-        print("Error as => ", e.args)
-        return Response({'msg': str(e.args)}, status=500)
+#         return Response({'response': locations}, status=200)
+#     except Exception as e:
+#         logging.getLogger("error_logger").error(repr(e))
+#         print("Error as => ", e.args)
+#         return Response({'msg': str(e.args)}, status=500)
 
 
 @api_view(['GET'])
@@ -6420,7 +6420,7 @@ def send_team_invitaion(request):
                     password=password
                 )
             # Create default user group
-            createDefaultUserGroup(company_id, "Default_access", [new_user.id])
+            # createDefaultUserGroup(company_id, "Default_access", [new_user.id])
             clone_group_permissions_to_users("Default_access", [new_user.id])
             # data =     {
 

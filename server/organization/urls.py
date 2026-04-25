@@ -26,6 +26,10 @@ urlpatterns = [
     path("api/auth/", include("accounts.urls")),
     path("api/account/", include("company_account.api_urls")),
     path("api/account/", include("company_account.legacy_frontend_urls")),
+    path("api/hospital_accounts/", include("company_account.legacy_auth_urls")),
+    path("api/hospital_management/", include("hospital_management.urls")),
+    path("api/shared_api/", include("shared.location_urls")),
+    path("api/school-management/", include("school_management.urls")),
 
     re_path(r"^api/static/(?P<path>.*)$", partial(serve, insecure=True)),
 ]

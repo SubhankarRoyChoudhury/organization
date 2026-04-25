@@ -169,16 +169,10 @@ export const logoutUser = async () => {
 // }
 
 export function get_Hospital_User_Login_Details(username) {
-  const access_token = localStorage.getItem("access_token");
-
-  return axios
-    .post(`${BASE_URL}authentication/user_info/`, {
-      access_token,
-    })
-    .then((response) => {
-      console.log(response.data);
-
-      return response.data;
+  return getCurrentUser()
+    .then((responseData) => {
+      console.log(responseData);
+      return responseData;
     })
     .catch((error) => {
       const status = error.response?.status;

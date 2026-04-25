@@ -15,7 +15,10 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.response import Response
 
 from accounts.models import Organization, OrganizationUser
-from account_management.default_seed import seed_company_chart_of_accounts
+try:
+    from account_management.default_seed import seed_company_chart_of_accounts
+except Exception:
+    seed_company_chart_of_accounts = None
 from company_account.models import Companies, CompanyInfo, CompanyUser
 from school_management.models import School
 from shared.models import Location
@@ -1004,6 +1007,10 @@ def create_company_account(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
     company_code = _generate_company_code(company_name)
+    account_seed_summary = {
+        "status": "skipped",
+        "detail": "Chart of accounts seeding is unavailable in this deployment.",
+    }
 
     try:
         with transaction.atomic():
@@ -1093,15 +1100,22 @@ def create_company_account(request):
                 location_name=location,
                 create_if_missing=True,
             )
-
-            account_seed_summary = seed_company_chart_of_accounts(
-                company_id=company.id,
-                username=company_user.username,
-            )
     except IntegrityError as exc:
         message = str(exc)
         detail = "Unable to create company because a related record already exists."
         return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+
+    if callable(seed_company_chart_of_accounts):
+        try:
+            account_seed_summary = seed_company_chart_of_accounts(
+                company_id=company.id,
+                username=company_user.username,
+            )
+        except Exception as exc:
+            account_seed_summary = {
+                "status": "failed",
+                "detail": f"Company created, but account seeding failed: {exc}",
+            }
 
     email_warning = None
     try:

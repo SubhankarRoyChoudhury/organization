@@ -32,11 +32,11 @@ urlpatterns = [
         views.addNewLocationDesignation,
         name="add-new-location-designation",
     ),
-    path(
-        "updateLocationDesignation/",
-        views.updateLocationDesignation,
-        name="update-location-designation",
-    ),
+    # path(
+    #     "updateLocationDesignation/",
+    #     views.updateLocationDesignation,
+    #     name="update-location-designation",
+    # ),
     path("getAllCountries/", location_views.getAllCountries, name="get-all-countries"),
     path("getAllStates/<country_code>/", location_views.getAllStates, name="get-all-states"),
     path("uploadImageFromAnyWhere/", location_views.uploadImageFromAnyWhere, name="upload-image-from-anywhere"),
