@@ -1963,6 +1963,15 @@ class TimeSlotListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         company = require_company(self.request)
         serializer.save(companies=company)
+
+
+class TimeSlotDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = TimeSlotSerializer
+
+    def get_queryset(self):
+        company = require_company(self.request)
+        return TimeSlot.objects.filter(companies=company)
         
 class DoctorWithScheduleCreateView(APIView):
     permission_classes = [AllowAny]

@@ -2726,6 +2726,27 @@ export function createTimeSlot(payload, company_id) {
     });
 }
 
+export function updateTimeSlot(timeSlotId, payload, company_id) {
+  const access_token = localStorage.getItem("access_token");
+  const params = new URLSearchParams();
+  if (company_id) params.append("company_id", company_id);
+  if (access_token) params.append("access_token", access_token);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return axios
+    .put(
+      `${BASE_URL}hospital_management/time-slots/${timeSlotId}/${query}`,
+      payload,
+    )
+    .then((response) => response?.data?.data || response?.data)
+    .catch((error) => {
+      console.error(
+        "Error updating time slot:",
+        error.response?.data || error,
+      );
+      throw error;
+    });
+}
+
 /* ============================
    ✅ Get All Doctor Schedules (or filter)
    ============================ */
@@ -2846,6 +2867,14 @@ const getVoucherAccessToken = () => {
   );
 };
 
+const getVoucherAuthHeaders = () => {
+  const accessToken = getVoucherAccessToken();
+  return {
+    "Content-Type": "application/x-www-form-urlencoded",
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+};
+
 const encodeVoucherFormPayload = (payload) => {
   const params = new URLSearchParams();
   Object.entries(payload || {}).forEach(([key, value]) => {
@@ -2865,7 +2894,7 @@ export const getReceiptVoucherDebitAccounts = async () => {
     `${BASE_URL}voucher_api/getAllAccountNameDebit/Receipt`,
     body,
     {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: getVoucherAuthHeaders(),
     },
   );
 
@@ -2882,7 +2911,7 @@ export const getReceiptVoucherCreditAccounts = async () => {
     `${BASE_URL}voucher_api/getAllAccountNameCredit/Receipt`,
     body,
     {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: getVoucherAuthHeaders(),
     },
   );
 
@@ -2901,7 +2930,7 @@ export const generateReceiptVoucherId = async (company_id) => {
     `${BASE_URL}voucher_api/generateVoucherId/${voucherToken}`,
     body,
     {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: getVoucherAuthHeaders(),
     },
   );
   return response?.data || "";
@@ -2965,7 +2994,7 @@ export const createReceiptVoucher = async ({
     `${BASE_URL}voucher_api/addNewVoucher/`,
     body,
     {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: getVoucherAuthHeaders(),
     },
   );
 
@@ -2987,7 +3016,7 @@ export const getReceiptVoucherDetailsWithTransaction = async (
     `${BASE_URL}voucher_api/getVoucherDetailsWithTransaction/`,
     body,
     {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: getVoucherAuthHeaders(),
     },
   );
 

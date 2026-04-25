@@ -72,6 +72,7 @@ urlpatterns = [
     path('insuarance-providers/<int:pk>/', views.InsuaranceProviderDetailView.as_view(), name='insuarance-provider-detail'),
     # Create Time- Slot Url
     path('time-slots/', views.TimeSlotListCreateView.as_view(), name='time-slot-list-create'),
+    path('time-slots/<int:pk>/', views.TimeSlotDetailView.as_view(), name='time-slot-detail'),
     path('duty-roasters/', views.DutyRoasterListCreateView.as_view(), name='duty-roaster-list-create'),
     path('duty-roasters/<int:pk>/', views.DutyRoasterDetailView.as_view(), name='duty-roaster-detail'),
     # get Views for Doctor Schedules  Url

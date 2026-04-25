@@ -15,7 +15,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.response import Response
 
 from accounts.models import Organization, OrganizationUser
-# from account_management.default_seed import seed_company_chart_of_accounts
+from account_management.default_seed import seed_company_chart_of_accounts
 from company_account.models import Companies, CompanyInfo, CompanyUser
 from school_management.models import School
 from shared.models import Location
@@ -593,6 +593,115 @@ def legacy_update_company_info(request):
     if "organization_id" not in incoming and company.organization_id:
         incoming["organization_id"] = company.organization_id
 
+    def _normalize_optional(value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            return value if value else None
+        return value
+
+    def _has_non_empty(key):
+        return _normalize_optional(incoming.get(key)) is not None
+
+    company_user_row = (
+        CompanyUser.objects.select_related("company")
+        .filter(company=company)
+        .filter(Q(is_owner=True) | Q(is_admin=True))
+        .order_by("-is_owner", "-is_admin", "id")
+        .first()
+    )
+    if company_user_row is None:
+        company_user_row = (
+            CompanyUser.objects.select_related("company")
+            .filter(company=company)
+            .order_by("id")
+            .first()
+        )
+
+    UserModel = get_user_model()
+    linked_auth_user = None
+    auth_lookup_values = [
+        (company_user_row.username if company_user_row else None),
+        company.username,
+        request.user.username if request.user and request.user.is_authenticated else None,
+        company.email,
+    ]
+    for candidate in auth_lookup_values:
+        candidate_value = str(candidate or "").strip()
+        if not candidate_value:
+            continue
+        linked_auth_user = UserModel.objects.filter(
+            Q(username__iexact=candidate_value) | Q(email__iexact=candidate_value)
+        ).first()
+        if linked_auth_user is not None:
+            break
+
+    next_username = _normalize_optional(incoming.get("username")) if _has_non_empty("username") else None
+    next_email = _normalize_optional(incoming.get("email")) if _has_non_empty("email") else None
+    if isinstance(next_email, str):
+        next_email = next_email.lower()
+    next_mobile = _normalize_optional(incoming.get("mobile_no")) if _has_non_empty("mobile_no") else None
+    next_password = _normalize_optional(incoming.get("password")) if _has_non_empty("password") else None
+
+    if next_username:
+        company_user_username_qs = CompanyUser.objects.filter(username__iexact=next_username).exclude(
+            company=company
+        )
+        if company_user_row is not None:
+            company_user_username_qs = company_user_username_qs.exclude(id=company_user_row.id)
+        if company_user_username_qs.exists():
+            return Response(
+                {"detail": "This username is already used by another company user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        auth_username_qs = UserModel.objects.filter(username__iexact=next_username)
+        if linked_auth_user is not None:
+            auth_username_qs = auth_username_qs.exclude(id=linked_auth_user.id)
+        if auth_username_qs.exists():
+            return Response(
+                {"detail": "This username is already registered."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    if next_email:
+        company_user_email_qs = CompanyUser.objects.filter(email__iexact=next_email).exclude(
+            company=company
+        )
+        if company_user_row is not None:
+            company_user_email_qs = company_user_email_qs.exclude(id=company_user_row.id)
+        if company_user_email_qs.exists():
+            return Response(
+                {"detail": "This email is already used by another company user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        auth_email_qs = UserModel.objects.filter(email__iexact=next_email)
+        if linked_auth_user is not None:
+            auth_email_qs = auth_email_qs.exclude(id=linked_auth_user.id)
+        if auth_email_qs.exists():
+            return Response(
+                {"detail": "This email is already registered."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    if next_mobile:
+        company_user_mobile_qs = CompanyUser.objects.filter(mobile=next_mobile).exclude(company=company)
+        if company_user_row is not None:
+            company_user_mobile_qs = company_user_mobile_qs.exclude(id=company_user_row.id)
+        if company_user_mobile_qs.exists():
+            return Response(
+                {"detail": "This mobile number is already used by another company user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        auth_mobile_qs = UserModel.objects.filter(phone_number=next_mobile)
+        if linked_auth_user is not None:
+            auth_mobile_qs = auth_mobile_qs.exclude(id=linked_auth_user.id)
+        if auth_mobile_qs.exists():
+            return Response(
+                {"detail": "This mobile number is already registered."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     field_map = {
         "company_name": "company_name",
         "admin_name": "admin_name",
@@ -610,39 +719,7 @@ def legacy_update_company_info(request):
         "organization_id": "organization_id",
     }
 
-    for incoming_key, model_field in field_map.items():
-        if incoming_key in incoming:
-            setattr(company_info, model_field, incoming.get(incoming_key))
-
-    company_info.save()
-
-    if "company_name" in incoming:
-        company.company_name = incoming.get(
-            "company_name") or company.company_name
-    if "admin_name" in incoming:
-        company.admin_name = incoming.get("admin_name") or company.admin_name
-    if "email" in incoming:
-        company.email = incoming.get("email") or company.email
-    if "address" in incoming:
-        company.address = incoming.get("address") or company.address
-    if "pin" in incoming:
-        company.pin = incoming.get("pin") or company.pin
-    if "mobile_no" in incoming:
-        company.mobile = incoming.get("mobile_no") or company.mobile
-    if "main_group" in incoming:
-        company.main_group = incoming.get("main_group") or company.main_group
-    if "sub_group" in incoming:
-        company.sub_group = incoming.get("sub_group") or company.sub_group
-    if "school_category" in incoming:
-        company.school_category = incoming.get("school_category") or None
-    if "username" in incoming:
-        company.username = incoming.get("username") or company.username
-    if "location" in incoming:
-        company.location = incoming.get("location") or None
-    if "district" in incoming:
-        company.district = incoming.get("district") or None
-    if "school_code" in incoming:
-        company.school_code = incoming.get("school_code") or None
+    parsed_start_date = None
     if "start_date" in incoming:
         parsed_start_date, error_response = _parse_iso_date(
             incoming.get("start_date"),
@@ -650,10 +727,133 @@ def legacy_update_company_info(request):
         )
         if error_response is not None:
             return error_response
-        company.start_date = parsed_start_date
-    company.save()
 
-    _upsert_company_location(company, incoming, request, create_if_missing=True)
+    with transaction.atomic():
+        for incoming_key, model_field in field_map.items():
+            if _has_non_empty(incoming_key):
+                value = _normalize_optional(incoming.get(incoming_key))
+                if incoming_key == "email" and isinstance(value, str):
+                    value = value.lower()
+                setattr(company_info, model_field, value)
+        company_info.save()
+
+        if _has_non_empty("company_name"):
+            company.company_name = _normalize_optional(incoming.get("company_name")) or company.company_name
+        if _has_non_empty("admin_name"):
+            company.admin_name = _normalize_optional(incoming.get("admin_name")) or company.admin_name
+        if _has_non_empty("email"):
+            email_value = _normalize_optional(incoming.get("email"))
+            company.email = email_value.lower() if isinstance(email_value, str) else email_value
+        if _has_non_empty("address"):
+            company.address = _normalize_optional(incoming.get("address")) or company.address
+        if _has_non_empty("pin"):
+            company.pin = _normalize_optional(incoming.get("pin")) or company.pin
+        if _has_non_empty("mobile_no"):
+            company.mobile = _normalize_optional(incoming.get("mobile_no")) or company.mobile
+        if _has_non_empty("main_group"):
+            company.main_group = _normalize_optional(incoming.get("main_group")) or company.main_group
+        if _has_non_empty("sub_group"):
+            company.sub_group = _normalize_optional(incoming.get("sub_group")) or company.sub_group
+        if _has_non_empty("school_category"):
+            company.school_category = _normalize_optional(incoming.get("school_category")) or company.school_category
+        if _has_non_empty("username"):
+            company.username = _normalize_optional(incoming.get("username")) or company.username
+        if _has_non_empty("location"):
+            company.location = _normalize_optional(incoming.get("location")) or company.location
+        if _has_non_empty("district"):
+            company.district = _normalize_optional(incoming.get("district")) or company.district
+        if _has_non_empty("school_code"):
+            company.school_code = _normalize_optional(incoming.get("school_code")) or company.school_code
+        if parsed_start_date is not None:
+            company.start_date = parsed_start_date
+        company.save()
+
+        if company_user_row is not None:
+            if _has_non_empty("organization_id"):
+                company_user_row.organization_id = _normalize_optional(incoming.get("organization_id"))
+            if _has_non_empty("admin_name"):
+                company_user_row.name = _normalize_optional(incoming.get("admin_name")) or company_user_row.name
+            if _has_non_empty("username"):
+                company_user_row.username = _normalize_optional(incoming.get("username")) or company_user_row.username
+            if _has_non_empty("email"):
+                company_user_email = _normalize_optional(incoming.get("email"))
+                company_user_row.email = company_user_email.lower() if isinstance(company_user_email, str) else company_user_email
+            if _has_non_empty("mobile_no"):
+                company_user_row.mobile = _normalize_optional(incoming.get("mobile_no")) or company_user_row.mobile
+            if _has_non_empty("address"):
+                company_user_row.address = _normalize_optional(incoming.get("address")) or company_user_row.address
+            if _has_non_empty("city"):
+                company_user_row.city = _normalize_optional(incoming.get("city")) or company_user_row.city
+            if _has_non_empty("head_office_state"):
+                company_user_row.state = _normalize_optional(incoming.get("head_office_state")) or company_user_row.state
+            if _has_non_empty("pin"):
+                company_user_row.pin = _normalize_optional(incoming.get("pin")) or company_user_row.pin
+            company_user_row.updated_by = getattr(request.user, "username", "") or company_user_row.updated_by
+            company_user_row.updated_on = timezone.now()
+            company_user_row.save()
+
+        if linked_auth_user is not None:
+            user_update_fields = []
+            if _has_non_empty("username"):
+                linked_auth_user.username = _normalize_optional(incoming.get("username")) or linked_auth_user.username
+                user_update_fields.append("username")
+            if _has_non_empty("email"):
+                user_email = _normalize_optional(incoming.get("email"))
+                linked_auth_user.email = user_email.lower() if isinstance(user_email, str) else user_email
+                user_update_fields.append("email")
+            if _has_non_empty("mobile_no"):
+                linked_auth_user.phone_number = _normalize_optional(incoming.get("mobile_no"))
+                user_update_fields.append("phone_number")
+            if _has_non_empty("admin_name"):
+                linked_auth_user.first_name = _normalize_optional(incoming.get("admin_name")) or linked_auth_user.first_name
+                user_update_fields.append("first_name")
+            if next_password:
+                linked_auth_user.set_password(next_password)
+                user_update_fields.append("password")
+            if user_update_fields:
+                linked_auth_user.save(update_fields=user_update_fields)
+
+        _upsert_company_location(company, incoming, request, create_if_missing=True)
+
+        resolved_sub_group = (
+            _normalize_optional(incoming.get("sub_group"))
+            or company.sub_group
+            or ""
+        ).lower()
+        school_row = School.objects.filter(company=company).order_by("id").first()
+        if school_row is not None or resolved_sub_group == "school":
+            if school_row is None:
+                school_row = School.objects.create(
+                    company=company,
+                    name=company.company_name,
+                    address=company.address or "",
+                    city=(
+                        _normalize_optional(incoming.get("city"))
+                        or company.district
+                        or company.location
+                        or ""
+                    ),
+                    state=(
+                        _normalize_optional(incoming.get("head_office_state"))
+                        or ""
+                    ),
+                    country=_normalize_optional(incoming.get("country")) or "",
+                    postal_code=company.pin or "",
+                )
+
+            if _has_non_empty("company_name"):
+                school_row.name = _normalize_optional(incoming.get("company_name")) or school_row.name
+            if _has_non_empty("address"):
+                school_row.address = _normalize_optional(incoming.get("address")) or school_row.address
+            if _has_non_empty("city"):
+                school_row.city = _normalize_optional(incoming.get("city")) or school_row.city
+            if _has_non_empty("head_office_state"):
+                school_row.state = _normalize_optional(incoming.get("head_office_state")) or school_row.state
+            if _has_non_empty("country"):
+                school_row.country = _normalize_optional(incoming.get("country")) or school_row.country
+            if _has_non_empty("pin"):
+                school_row.postal_code = _normalize_optional(incoming.get("pin")) or school_row.postal_code
+            school_row.save()
 
     payload = _serialize_company_info(company, company_info)
     return Response(

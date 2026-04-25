@@ -4158,33 +4158,42 @@ export default function Category() {
         { label: "Students", value: String(studentsValue) },
       ];
   const schoolsDisplayValue = categoryDashboardSchools.length || schoolsValue;
-  const categorySchoolRows = categoryDashboardSchools.map((school, index) => ({
-    id:
-      school.id ||
-      school.company_id ||
-      school.school_id ||
-      school.username ||
-      `school-${index}`,
-    serial: index + 1,
-    school: school.company_name || school.name || "—",
-    category:
-      school.school_category ||
-      school.sub_category ||
-      school.sub_group ||
-      school.category ||
-      "—",
-    location: school.location || "—",
-    admin: school.admin_name || "—",
-    email: school.email || "—",
-    userId: school.username || school.user_id || school.userid || "—",
-    address: school.address || "—",
-    district: school.district || "—",
-    city: school.city || "—",
-    state: school.state || school.head_office_state || "—",
-    isApproved:
-      school.is_approved === true ||
-      String(school.approved || "").toLowerCase() === "yes",
-  }));
+  const categorySchoolRows = categoryDashboardSchools.map((school, index) => {
+    const baseName = school.company_name || school.name || "—";
+    const locationValue = String(school.location || school.district || "").trim();
+    const displayName =
+      !isSwasthyaWorkspace && locationValue
+        ? `${baseName} (${locationValue})`
+        : baseName;
+
+    return {
+      id:
+        school.id ||
+        school.company_id ||
+        school.school_id ||
+        school.username ||
+        `school-${index}`,
+      serial: index + 1,
+      school: displayName,
+      category:
+        school.school_category ||
+        school.sub_category ||
+        school.sub_group ||
+        school.category ||
+        "—",
+      location: school.location || "—",
+      admin: school.admin_name || "—",
+      email: school.email || "—",
+      userId: school.username || school.user_id || school.userid || "—",
+      address: school.address || "—",
+      district: school.district || "—",
+      city: school.city || "—",
+      state: school.state || school.head_office_state || "—",
+      isApproved:
+        school.is_approved === true ||
+        String(school.approved || "").toLowerCase() === "yes",
+    };
+  });
 
   if (isPageLoading) {
     return (

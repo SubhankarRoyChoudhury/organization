@@ -5,7 +5,9 @@ import {
   createTimeSlot,
   getAllTimeSlots,
   get_Hospital_User_Login_Details,
+  updateTimeSlot,
 } from "@/app/api/apiService";
+import ActionMenu from "@/components/ui/ActionMenu";
 import DialogCreateTimeSlot from "@/components/ui/DialogCreateTimeSlot";
 
 export default function DoctorTimeSlotListPage() {
@@ -16,10 +18,13 @@ export default function DoctorTimeSlotListPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [editingSlotId, setEditingSlotId] = useState(null);
   const [formData, setFormData] = useState({
     start_time: "",
     end_time: "",
   });
+
+  const isEditMode = editingSlotId !== null;
 
   const resolveCompanyId = (data) => {
     const candidates = [
@@ -84,14 +89,41 @@ export default function DoctorTimeSlotListPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const normalizeInputTime = (timeValue) => {
+    const value = String(timeValue || "");
+    if (!value.includes(":")) return "";
+    const [hour = "", minute = ""] = value.split(":");
+    if (!hour || !minute) return "";
+    return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+  };
+
   const closeDialog = () => {
     if (isSaving) return;
     setIsDialogOpen(false);
+    setEditingSlotId(null);
     setFormError("");
     setFormData({ start_time: "", end_time: "" });
   };
 
-  const handleCreateTimeSlot = async (event) => {
+  const openCreateDialog = () => {
+    setEditingSlotId(null);
+    setFormError("");
+    setFormData({ start_time: "", end_time: "" });
+    setIsDialogOpen(true);
+  };
+
+  const handleEditSlot = (slot) => {
+    if (!slot?.id) return;
+    setEditingSlotId(slot.id);
+    setFormError("");
+    setFormData({
+      start_time: normalizeInputTime(slot.start_time),
+      end_time: normalizeInputTime(slot.end_time),
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmitTimeSlot = async (event) => {
     event.preventDefault();
 
     if (!companyId) {
@@ -110,15 +142,18 @@ export default function DoctorTimeSlotListPage() {
     setIsSaving(true);
     setFormError("");
     try {
-      await createTimeSlot(
-        {
-          start_time: formData.start_time,
-          end_time: formData.end_time,
-        },
-        companyId,
-      );
+      const payload = {
+        start_time: formData.start_time,
+        end_time: formData.end_time,
+      };
+      if (isEditMode) {
+        await updateTimeSlot(editingSlotId, payload, companyId);
+      } else {
+        await createTimeSlot(payload, companyId);
+      }
       await loadTimeSlots(companyId);
       setIsDialogOpen(false);
+      setEditingSlotId(null);
       setFormData({ start_time: "", end_time: "" });
     } catch (saveError) {
       const apiError =
@@ -126,9 +161,13 @@ export default function DoctorTimeSlotListPage() {
         saveError?.response?.data?.errors?.start_time?.[0] ||
         saveError?.response?.data?.detail ||
         saveError?.response?.data?.error ||
-        "Unable to create time slot.";
+        (isEditMode ? "Unable to update time slot." : "Unable to create time slot.");
       setFormError(
-        typeof apiError === "string" ? apiError : "Unable to create time slot.",
+        typeof apiError === "string"
+          ? apiError
+          : isEditMode
+            ? "Unable to update time slot."
+            : "Unable to create time slot.",
       );
     } finally {
       setIsSaving(false);
@@ -155,11 +194,7 @@ export default function DoctorTimeSlotListPage() {
           </div>
           <button
             type="button"
-            onClick={() => {
-              setFormError("");
-              setFormData({ start_time: "", end_time: "" });
-              setIsDialogOpen(true);
-            }}
+            onClick={openCreateDialog}
             className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-slate-800"
           >
             Create Time Slot
@@ -189,6 +224,7 @@ export default function DoctorTimeSlotListPage() {
                     <th className="px-4 py-3 text-left">Start Time</th>
                     <th className="px-4 py-3 text-left">End Time</th>
                     <th className="px-4 py-3 text-left">Display Time</th>
+                    <th className="px-4 py-3 text-left">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -201,6 +237,17 @@ export default function DoctorTimeSlotListPage() {
                       <td className="px-4 py-3">{slot.start_time || "—"}</td>
                       <td className="px-4 py-3">{slot.end_time || "—"}</td>
                       <td className="px-4 py-3">{slot.display_time || "—"}</td>
+                      <td className="px-4 py-3">
+                        <ActionMenu
+                          items={[
+                            {
+                              label: "Edit",
+                              onClick: () => handleEditSlot(slot),
+                            },
+                          ]}
+                          buttonLabel={`Open actions for slot ${slot.id}`}
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -215,8 +262,9 @@ export default function DoctorTimeSlotListPage() {
         isSaving={isSaving}
         formData={formData}
         formError={formError}
+        mode={isEditMode ? "edit" : "create"}
         onClose={closeDialog}
-        onSubmit={handleCreateTimeSlot}
+        onSubmit={handleSubmitTimeSlot}
         onChange={handleFormChange}
       />
     </section>

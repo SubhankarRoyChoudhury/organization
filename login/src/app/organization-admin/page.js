@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import {
   approveCompany,
   delistCompany,
@@ -11,52 +12,6 @@ import {
   getOrganizationSchools,
 } from "@/app/api/apiService";
 import CreateCompanyDialog from "@/components/ui/create-company-dialog";
-
-function StatIcon({ type }) {
-  const commonProps = {
-    viewBox: "0 0 24 24",
-    className: "h-5 w-5",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: "1.8",
-    "aria-hidden": "true",
-  };
-
-  if (type === "approved") {
-    return (
-      <svg {...commonProps}>
-        <path d="M20 7 9 18l-5-5" />
-      </svg>
-    );
-  }
-
-  if (type === "pending") {
-    return (
-      <svg {...commonProps}>
-        <circle cx="12" cy="12" r="8" />
-        <path d="M12 8v5l3 2" />
-      </svg>
-    );
-  }
-
-  if (type === "delisted") {
-    return (
-      <svg {...commonProps}>
-        <path d="M5 12h14" />
-        <path d="M8 8l8 8" />
-        <path d="M16 8l-8 8" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg {...commonProps}>
-      <path d="M4 12h16" />
-      <path d="M12 4v16" />
-      <circle cx="12" cy="12" r="8" />
-    </svg>
-  );
-}
 
 function ActionIcon({ type }) {
   const commonProps = {
@@ -128,6 +83,24 @@ const formatDate = (value) => {
   }
 };
 
+const formatLongDate = (value) => {
+  if (!value) {
+    return "-";
+  }
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = date.toLocaleString("en-US", { month: "short" });
+    const year = date.getFullYear();
+    return `${day} ${month}, ${year}`;
+  } catch (_error) {
+    return "-";
+  }
+};
+
 const formatPercent = (value) => `${Math.round(Number(value || 0))}%`;
 
 const toDateInputValue = (value) => {
@@ -151,6 +124,7 @@ export default function OrganizationAdminPage() {
   });
   const [schoolRecords, setSchoolRecords] = useState([]);
   const [hospitalRecords, setHospitalRecords] = useState([]);
+  const [clinicRecords, setClinicRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isLoadingOrganizations, setIsLoadingOrganizations] = useState(false);
@@ -159,7 +133,7 @@ export default function OrganizationAdminPage() {
     id: "",
     name: "Organization workspace",
   });
-  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const [openActionMenu, setOpenActionMenu] = useState(null);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [actionDialogMode, setActionDialogMode] = useState("");
   const [actionForm, setActionForm] = useState({
@@ -191,7 +165,7 @@ export default function OrganizationAdminPage() {
         setLoading(true);
         setError("");
         const organizationId = localStorage.getItem("organization_id") || "";
-        const [summaryResponse, schoolResponse, hospitalResponse] = await Promise.all([
+        const [summaryResponse, schoolResponse, hospitalResponse, clinicResponse] = await Promise.all([
           getOrganizationCompanySummary({
             organization_id: organizationId || undefined,
           }),
@@ -200,6 +174,10 @@ export default function OrganizationAdminPage() {
           }),
           getOrganizationHospitals({
             organization_id: organizationId || undefined,
+          }),
+          getOrganizationHospitals({
+            organization_id: organizationId || undefined,
+            sub_group: "Clinic",
           }),
         ]);
         if (!mounted) {
@@ -212,6 +190,7 @@ export default function OrganizationAdminPage() {
         });
         setSchoolRecords(Array.isArray(schoolResponse?.schools) ? schoolResponse.schools : []);
         setHospitalRecords(Array.isArray(hospitalResponse?.hospitals) ? hospitalResponse.hospitals : []);
+        setClinicRecords(Array.isArray(clinicResponse?.hospitals) ? clinicResponse.hospitals : []);
       } catch (_err) {
         if (!mounted) {
           return;
@@ -281,7 +260,7 @@ export default function OrganizationAdminPage() {
       setLoading(true);
       setError("");
       const organizationId = localStorage.getItem("organization_id") || "";
-      const [summaryResponse, schoolResponse, hospitalResponse] = await Promise.all([
+      const [summaryResponse, schoolResponse, hospitalResponse, clinicResponse] = await Promise.all([
         getOrganizationCompanySummary({
           organization_id: organizationId || undefined,
         }),
@@ -291,6 +270,10 @@ export default function OrganizationAdminPage() {
         getOrganizationHospitals({
           organization_id: organizationId || undefined,
         }),
+        getOrganizationHospitals({
+          organization_id: organizationId || undefined,
+          sub_group: "Clinic",
+        }),
       ]);
       setSummary({
         total: Number(summaryResponse?.total || 0),
@@ -299,6 +282,7 @@ export default function OrganizationAdminPage() {
       });
       setSchoolRecords(Array.isArray(schoolResponse?.schools) ? schoolResponse.schools : []);
       setHospitalRecords(Array.isArray(hospitalResponse?.hospitals) ? hospitalResponse.hospitals : []);
+      setClinicRecords(Array.isArray(clinicResponse?.hospitals) ? clinicResponse.hospitals : []);
     } catch (_err) {
       setError("Unable to load organization company summary.");
     } finally {
@@ -332,37 +316,6 @@ export default function OrganizationAdminPage() {
     };
   }, [summary]);
 
-  const statusCards = [
-    {
-      label: "Registered records",
-      value: summary.total,
-      helper: "All school and hospital records linked to this organization.",
-      tone: "from-[#0f766e] via-[#0f766e] to-[#115e59]",
-      icon: "total",
-    },
-    {
-      label: "Approved",
-      value: summary.approved,
-      helper: "Accounts already cleared for active use.",
-      tone: "from-[#15803d] via-[#16a34a] to-[#4d7c0f]",
-      icon: "approved",
-    },
-    {
-      label: "Pending review",
-      value: dashboardMetrics.pending,
-      helper: "Registrations still waiting for approval.",
-      tone: "from-[#9a3412] via-[#ea580c] to-[#f59e0b]",
-      icon: "pending",
-    },
-    {
-      label: "Delisted",
-      value: summary.delisted,
-      helper: "Records no longer active in the organization.",
-      tone: "from-[#7f1d1d] via-[#b91c1c] to-[#dc2626]",
-      icon: "delisted",
-    },
-  ];
-
   const quickActions = [
     {
       label: "Create record",
@@ -378,19 +331,19 @@ export default function OrganizationAdminPage() {
       icon: "access",
       variant: "secondary",
     },
-    {
-      label: "Open school directory",
-      description: "Jump to the organization school list for detailed records.",
-      action: () => router.push("/organization-admin/school-list"),
-      icon: "directory",
-      variant: "secondary",
-    },
+    // {
+    //   label: "Open school directory",
+    //   description: "Jump to the organization school list for detailed records.",
+    //   action: () => router.push("/organization-admin/school-list"),
+    //   icon: "directory",
+    //   variant: "secondary",
+    // },
   ];
 
   useEffect(() => {
     const handlePointerDown = (event) => {
       if (!event.target.closest("[data-company-action-menu]")) {
-        setOpenActionMenuId(null);
+        setOpenActionMenu(null);
       }
     };
 
@@ -421,7 +374,7 @@ export default function OrganizationAdminPage() {
       active_upto: toDateInputValue(company?.active_upto),
     });
     setActionError("");
-    setOpenActionMenuId(null);
+    setOpenActionMenu(null);
   };
 
   const openEditValidityDialog = (company) => {
@@ -434,14 +387,14 @@ export default function OrganizationAdminPage() {
       active_upto: toDateInputValue(company?.active_upto),
     });
     setActionError("");
-    setOpenActionMenuId(null);
+    setOpenActionMenu(null);
   };
 
   const handleDelist = async (company) => {
     setSelectedCompany(company);
     setIsSubmittingAction(true);
     setActionError("");
-    setOpenActionMenuId(null);
+    setOpenActionMenu(null);
 
     try {
       await delistCompany({
@@ -467,8 +420,8 @@ export default function OrganizationAdminPage() {
       return;
     }
 
-    if (!actionForm.active_from || !actionForm.active_upto) {
-      setActionError("Active from and active until are required.");
+    if (!actionForm.active_from) {
+      setActionError("Active from is required.");
       return;
     }
 
@@ -476,11 +429,14 @@ export default function OrganizationAdminPage() {
     setActionError("");
 
     try {
-      await approveCompany({
+      const payload = {
         company_id: selectedCompany?.company_id || selectedCompany?.id,
         active_from: actionForm.active_from,
-        active_upto: actionForm.active_upto,
-      });
+      };
+      if (actionForm.active_upto) {
+        payload.active_upto = actionForm.active_upto;
+      }
+      await approveCompany(payload);
       await reloadSummary();
       closeActionDialog();
     } catch (error) {
@@ -505,6 +461,29 @@ export default function OrganizationAdminPage() {
             <section className="overflow-hidden rounded-[32px] border border-slate-200/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(243,247,242,0.92))] shadow-[0_25px_80px_rgba(15,23,42,0.10)]">
               <div className="px-6 py-7 lg:px-8 lg:py-8">
                 <div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== "undefined" && window.history.length > 1) {
+                        router.back();
+                        return;
+                      }
+                      router.push("/category");
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path d="M15 18 9 12l6-6" />
+                    </svg>
+                    Back
+                  </button>
                   <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
                     Organization
                   </p>
@@ -513,29 +492,6 @@ export default function OrganizationAdminPage() {
                   </h1>
                 </div>
               </div>
-            </section>
-
-            <section className="mt-8 grid gap-4 lg:grid-cols-4">
-              {statusCards.map((card) => (
-                <article
-                  key={card.label}
-                  className={`overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.08)]`}
-                >
-                  <div className={`h-1.5 bg-gradient-to-r ${card.tone}`} />
-                  <div className="space-y-4 p-5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
-                        {card.label}
-                      </p>
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700">
-                        <StatIcon type={card.icon} />
-                      </span>
-                    </div>
-                    <p className="text-4xl font-semibold text-slate-900">{card.value}</p>
-                    <p className="text-sm leading-6 text-slate-500">{card.helper}</p>
-                  </div>
-                </article>
-              ))}
             </section>
 
             <section className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
@@ -566,28 +522,33 @@ export default function OrganizationAdminPage() {
                   <div className="mt-6 space-y-5">
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="rounded-[24px] bg-[#f6faf7] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                        <p className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                           Active records
                         </p>
-                        <p className="mt-2 text-3xl font-semibold text-slate-900">
+                        <p className="mt-2 text-3xl text-center font-semibold text-slate-900">
                           {dashboardMetrics.active}
                         </p>
+                        <span className="mt-1 block text-[12px] leading-[12px]">All school and hospital records linked to this organization.</span>
                       </div>
                       <div className="rounded-[24px] bg-[#fff8ef] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                        <p className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                           Pending approvals
                         </p>
-                        <p className="mt-2 text-3xl font-semibold text-slate-900">
-                          {dashboardMetrics.pending}
+                        <p className="mt-2 text-3xl text-center font-semibold text-slate-900">
+                          {dashboardMetrics.pending} 
                         </p>
+                        <span className="mt-1 block text-[12px] leading-[12px]">Registrations still waiting for approval.</span>
+
                       </div>
                       <div className="rounded-[24px] bg-[#fff2f2] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                        <p className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                           Delisted records
                         </p>
-                        <p className="mt-2 text-3xl font-semibold text-slate-900">
+                        <p className="mt-2 text-3xl text-center font-semibold text-slate-900">
                           {summary.delisted}
                         </p>
+                        <span className="mt-1 block text-[12px] leading-[12px]">Records no longer active in the organization.</span>
+
                       </div>
                     </div>
 
@@ -664,11 +625,11 @@ export default function OrganizationAdminPage() {
                     Group-wise records attached to this organization
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                    Records are separated into Vidya school data and Swasthya hospital data so each list stays aligned to its main group and subgroup.
+                    Records are separated into Vidya school data and Swasthya hospital and clinic data so each list stays aligned to its main group and subgroup.
                   </p>
                 </div>
                 <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-                  {schoolRecords.length + hospitalRecords.length} records
+                  {schoolRecords.length + hospitalRecords.length + clinicRecords.length} records
                 </div>
               </div>
 
@@ -680,9 +641,11 @@ export default function OrganizationAdminPage() {
                 <div className="mt-6 rounded-[24px] border border-rose-200 bg-rose-50 px-5 py-8 text-sm text-rose-700">
                   {error}
                 </div>
-              ) : schoolRecords.length === 0 && hospitalRecords.length === 0 ? (
+              ) : schoolRecords.length === 0 &&
+                hospitalRecords.length === 0 &&
+                clinicRecords.length === 0 ? (
                 <div className="mt-6 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-sm text-slate-500">
-                  No school or hospital records are linked to this organization yet.
+                  No school, hospital, or clinic records are linked to this organization yet.
                 </div>
               ) : (
                 <div className="mt-6 space-y-6">
@@ -700,6 +663,13 @@ export default function OrganizationAdminPage() {
                       title: "Hospital List",
                       records: hospitalRecords,
                       emptyMessage: "No Swasthya hospital records are linked to this organization.",
+                    },
+                    {
+                      key: "clinic",
+                      caption: "Swasthya",
+                      title: "Clinic List",
+                      records: clinicRecords,
+                      emptyMessage: "No Swasthya clinic records are linked to this organization.",
                     },
                   ].map((section) => (
                     <div
@@ -720,29 +690,50 @@ export default function OrganizationAdminPage() {
                         </div>
                       </div>
                       <div className="overflow-x-auto">
-                        <div className="min-w-[1120px]">
-                        <div className="grid grid-cols-[minmax(220px,1.7fr)_minmax(160px,1.1fr)_minmax(220px,1.5fr)_120px_120px_120px_120px_72px] gap-4 bg-slate-50 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          <span>{section.key === "vidya" ? "School" : "Hospital"}</span>
-                          <span>Admin owner</span>
-                          <span>Contact email</span>
-                          <span>Status</span>
-                          <span>Active from</span>
-                          <span>Active until</span>
-                          <span>Delist</span>
-                          <span className="text-right">Actions</span>
+                        <div className="w-full min-w-full">
+                        <div className="grid grid-cols-[minmax(260px,2.1fr)_minmax(180px,1.2fr)_minmax(150px,0.9fr)_minmax(130px,0.8fr)_96px] gap-4 bg-slate-50 px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          <span>
+                            {section.key === "vidya"
+                              ? "School"
+                              : section.key === "clinic"
+                              ? "Clinic"
+                              : "Hospital"}
+                          </span>
+                          <span>
+                            {section.key === "vidya"
+                              ? "School Admin"
+                              : section.key === "clinic"
+                              ? "Clinic Admin"
+                              : "Hospital Admin"}
+                          </span>
+                          {/* <span>Contact email</span> */}
+                          <span className="text-center">Status</span>
+                          <span className="text-center">Active Since</span>
+                          {/* <span>Active until</span> */}
+                          {/* <span>Delist</span> */}
+                          <span className="text-center">Actions</span>
                         </div>
                         {section.records.length ? section.records.map((company) => {
                           const isApproved = Boolean(company?.is_approved);
                           const isDelisted = Boolean(company?.delist);
+                          const schoolOrHospitalName = company.company_name || "Unnamed record";
+                          const schoolLocation =
+                            section.key === "vidya"
+                              ? (company.location || company.district || "").trim()
+                              : "";
+                          const schoolDisplayName =
+                            section.key === "vidya" && schoolLocation
+                              ? `${schoolOrHospitalName} (${schoolLocation})`
+                              : schoolOrHospitalName;
                           return (
                             <article
                               key={company.id}
                               className="border-t border-slate-200 first:border-t-0"
                             >
-                              <div className="grid grid-cols-[minmax(220px,1.7fr)_minmax(160px,1.1fr)_minmax(220px,1.5fr)_120px_120px_120px_120px_72px] gap-4 px-5 py-5 items-center">
+                              <div className="grid grid-cols-[minmax(260px,2.1fr)_minmax(180px,1.2fr)_minmax(150px,0.9fr)_minmax(130px,0.8fr)_96px] gap-4 px-5 py-5 items-center">
                                 <div>
                                   <p className="text-base font-semibold text-slate-900">
-                                    {company.company_name || "Unnamed record"}
+                                    {schoolDisplayName}
                                   </p>
                                   {/* <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
                                     ID {company.company_id || company.id}
@@ -753,11 +744,11 @@ export default function OrganizationAdminPage() {
                                   {company.admin_name || "-"}
                                 </div>
 
-                                <div className="break-all text-sm font-medium text-slate-900">
+                                {/* <div className="break-all text-sm font-medium text-slate-900">
                                   {company.email || "-"}
-                                </div>
+                                </div> */}
 
-                                <div>
+                                <div className="text-center">
                                   <span
                                     className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
                                       isApproved
@@ -769,15 +760,22 @@ export default function OrganizationAdminPage() {
                                   </span>
                                 </div>
 
-                                <div className="text-sm font-medium text-slate-900">
-                                  {formatDate(company.active_from)}
+                                <div className="text-sm text-center font-medium text-slate-900">
+                                  {company.active_from ? (
+                                    formatLongDate(company.active_from)
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-slate-500">
+                                      
+                                      ?
+                                    </span>
+                                  )}
                                 </div>
 
-                                <div className="text-sm font-medium text-slate-900">
+                                {/* <div className="text-sm font-medium text-slate-900">
                                   {formatDate(company.active_upto)}
-                                </div>
+                                </div> */}
 
-                                <div>
+                                {/* <div>
                                   <span
                                     className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
                                       isDelisted
@@ -787,52 +785,42 @@ export default function OrganizationAdminPage() {
                                   >
                                     {isDelisted ? "Yes" : "No"}
                                   </span>
-                                </div>
+                                </div> */}
 
                                 <div
-                                  className="relative flex justify-end"
+                                  className="relative flex justify-center"
                                   data-company-action-menu="true"
                                 >
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      setOpenActionMenuId((previous) =>
-                                        previous === company.id ? null : company.id,
-                                      )
-                                    }
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      const rect = event.currentTarget.getBoundingClientRect();
+                                      const menuWidth = 176;
+                                      const margin = 8;
+                                      let left = rect.right - menuWidth;
+                                      left = Math.max(
+                                        margin,
+                                        Math.min(left, window.innerWidth - menuWidth - margin),
+                                      );
+                                      const top = rect.bottom + 8;
+                                      setOpenActionMenu((previous) =>
+                                        previous?.id === company.id
+                                          ? null
+                                          : {
+                                              id: company.id,
+                                              company,
+                                              isDelisted,
+                                              top,
+                                              left,
+                                            },
+                                      );
+                                    }}
                                     className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                                     aria-label={`Open actions for ${company.company_name || "record"}`}
                                   >
                                     <RowMenuIcon />
                                   </button>
-
-                                  {openActionMenuId === company.id ? (
-                                    <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                                      <button
-                                        type="button"
-                                        onClick={() => openApproveDialog(company)}
-                                        className="w-full border-b border-slate-100 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-                                      >
-                                        {isDelisted ? "Enlist" : "Approve"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditValidityDialog(company)}
-                                        className="w-full border-b border-slate-100 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-                                      >
-                                        Edit valid date
-                                      </button>
-                                      {!isDelisted ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDelist(company)}
-                                          className="w-full px-4 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50"
-                                        >
-                                          Delist
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
                                 </div>
                               </div>
                             </article>
@@ -852,6 +840,41 @@ export default function OrganizationAdminPage() {
           </div>
         </div>
       </main>
+
+      {openActionMenu && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed z-40 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
+              style={{ top: openActionMenu.top, left: openActionMenu.left }}
+              data-company-action-menu="true"
+            >
+              <button
+                type="button"
+                onClick={() => openApproveDialog(openActionMenu.company)}
+                className="w-full border-b border-slate-100 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+              >
+                {openActionMenu.isDelisted ? "Enlist" : "Approve"}
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditValidityDialog(openActionMenu.company)}
+                className="w-full border-b border-slate-100 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+              >
+                Edit valid date
+              </button>
+              {!openActionMenu.isDelisted ? (
+                <button
+                  type="button"
+                  onClick={() => handleDelist(openActionMenu.company)}
+                  className="w-full px-4 py-3 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                >
+                  Delist
+                </button>
+              ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {selectedCompany && actionDialogMode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
@@ -880,7 +903,7 @@ export default function OrganizationAdminPage() {
 
             <form onSubmit={handleApproveOrUpdateValidity} className="mt-6 space-y-4">
               <label className="block">
-                <span className="text-sm font-medium text-slate-700">Active from</span>
+                <span className="text-sm font-medium  text-slate-700">Active from</span>
                 <input
                   type="date"
                   value={actionForm.active_from}

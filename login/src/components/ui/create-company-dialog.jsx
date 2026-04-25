@@ -570,6 +570,8 @@ const CreateCompanyDialog = forwardRef(
 
       const normalize = (value) =>
         typeof value === "string" ? value.trim() : value || "";
+      const hasValue = (value) =>
+        value !== undefined && value !== null && String(value).trim() !== "";
 
       const normalizedValues = {
         organization_id: formValues.organization_id,
@@ -641,9 +643,7 @@ const CreateCompanyDialog = forwardRef(
       try {
         setIsSubmitting(true);
         if (isUpdateMode) {
-          const updatePayload = {
-            id: formValues.id,
-            company_id: formValues.company_id,
+          const updateFieldMap = {
             organization_id: normalizedValues.organization_id,
             company_name: normalizedValues.company_name,
             location: normalizedValues.location,
@@ -662,8 +662,18 @@ const CreateCompanyDialog = forwardRef(
             main_group: normalizedValues.main_group,
             sub_group: normalizedValues.sub_group,
             school_category: normalizedValues.school_category,
-            ...(formValues.password ? { password: formValues.password } : {}),
+            password: normalize(formValues.password),
           };
+
+          const updatePayload = {
+            id: formValues.id,
+            company_id: formValues.company_id,
+          };
+          Object.entries(updateFieldMap).forEach(([key, value]) => {
+            if (hasValue(value)) {
+              updatePayload[key] = value;
+            }
+          });
           await updateCompanyInfo(updatePayload);
         } else {
           await createCompanyAccount({
@@ -929,7 +939,12 @@ const CreateCompanyDialog = forwardRef(
                 </label>
                 <label className="flex min-w-0 flex-col gap-2 col-span-1 md:col-span-2 xl:col-span-4 text-sm font-medium text-slate-700">
                   <span className="font-semibold">
-                    Admin&apos;s Password <span className="text-rose-600">*</span>
+                    Admin&apos;s Password{" "}
+                    {dialogMode !== "update" ? (
+                      <span className="text-rose-600">*</span>
+                    ) : (
+                      <span className="text-xs font-normal">(Optional)</span>
+                    )}
                   </span>
                   <div className="relative">
                     <input
@@ -937,13 +952,19 @@ const CreateCompanyDialog = forwardRef(
                       name="password"
                       value={formValues.password}
                       onChange={handleChange}
-                      placeholder="Create a temporary password"
+                      placeholder={
+                        dialogMode === "update"
+                          ? "Password cannot be changed from update form"
+                          : "Create a temporary password"
+                      }
                       required={dialogMode !== "update"}
+                      disabled={dialogMode === "update"}
                       className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 pr-11 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
+                      disabled={dialogMode === "update"}
                       className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-500 transition hover:text-slate-700"
                       aria-label={showPassword ? "Hide password" : "Show password"}
                     >

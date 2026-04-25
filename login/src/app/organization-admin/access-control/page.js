@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import {
   clearLoginSession,
   getOrganizationUsers,
@@ -33,11 +34,15 @@ const formatDate = (value) => {
   if (!value) {
     return "-";
   }
-  if (typeof value === "string") {
-    return value.split("T")[0];
-  }
   try {
-    return new Date(value).toISOString().split("T")[0];
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = date.toLocaleString("en-US", { month: "short" });
+    const year = date.getFullYear();
+    return `${day} ${month}, ${year}`;
   } catch (err) {
     return "-";
   }
@@ -90,7 +95,7 @@ export default function OrganizationAccessControlPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [actionMenuOpenId, setActionMenuOpenId] = useState(null);
+  const [openActionMenu, setOpenActionMenu] = useState(null);
   const [isEditRoleDialogOpen, setEditRoleDialogOpen] = useState(false);
   const [isConfirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState("");
@@ -201,6 +206,26 @@ export default function OrganizationAccessControlPage() {
   }, []);
 
   useEffect(() => {
+    if (!openActionMenu) {
+      return undefined;
+    }
+    const handlePointerDown = (event) => {
+      if (!event.target.closest("[data-user-action-menu]")) {
+        setOpenActionMenu(null);
+      }
+    };
+    const closeMenu = () => setOpenActionMenu(null);
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [openActionMenu]);
+
+  useEffect(() => {
     let mounted = true;
     const loadCurrentUserLevel = async () => {
       try {
@@ -309,7 +334,7 @@ export default function OrganizationAccessControlPage() {
   };
 
   const openEditRoleDialog = (user) => {
-    setActionMenuOpenId(null);
+    setOpenActionMenu(null);
     setSelectedUser(user);
     setCategorySelections(parseCategorySelections(user?.category));
     setRoleForm({
@@ -322,7 +347,7 @@ export default function OrganizationAccessControlPage() {
   };
 
   const openConfirmDialog = (action, user) => {
-    setActionMenuOpenId(null);
+    setOpenActionMenu(null);
     setSelectedUser(user);
     setConfirmAction(action);
     setActionError("");
@@ -693,13 +718,7 @@ export default function OrganizationAccessControlPage() {
     [users],
   );
 
-  // const activeUsers = useMemo(
-  //   () => users.filter((user) => !user?.delist),
-  //   [users],
-  // );
-
   const stats = useMemo(() => {
-    // const total = users.length;
     const approved = approvedUsers.length;
     const pending = pendingUsers.length;
     const delisted = users.filter((user) => user?.delist).length;
@@ -720,6 +739,29 @@ export default function OrganizationAccessControlPage() {
         <header className="w-full bg-white">
           <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8 md:flex-row md:items-center md:justify-between">
             <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined" && window.history.length > 1) {
+                    router.back();
+                    return;
+                  }
+                  router.push("/organization-admin");
+                }}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path d="M15 18 9 12l6-6" />
+                </svg>
+                Back
+              </button>
               <p className="text-xs font-semibold uppercase tracking-[0.4em] text-slate-400">
                 Access control
               </p>
@@ -832,7 +874,7 @@ export default function OrganizationAccessControlPage() {
               <p className="px-6 py-6 text-sm text-red-500">{error}</p>
             ) : approvedUsers.length === 0 ? (
               <p className="px-6 py-6 text-sm text-slate-500">
-                No organization users found for this organization.
+                No approved organization users found for this organization.
               </p>
             ) : (
               <div className="max-h-[520px] overflow-auto">
@@ -871,41 +913,38 @@ export default function OrganizationAccessControlPage() {
                           <td className="px-4 py-3">{formatDate(user.created_on)}</td>
                           <td className="px-4 py-3">
                             {currentUserLevel === "Level1" ? (
-                              <div className="relative inline-flex">
+                              <div className="relative inline-flex" data-user-action-menu="true">
                                 <button
                                   className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:border-slate-300"
                                   type="button"
-                                  onClick={() =>
-                                    setActionMenuOpenId((prev) =>
-                                      prev === user.id ? null : user.id,
-                                    )
-                                  }
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    const menuWidth = 160;
+                                    const margin = 8;
+                                    let left = rect.right - menuWidth;
+                                    left = Math.max(
+                                      margin,
+                                      Math.min(left, window.innerWidth - menuWidth - margin),
+                                    );
+                                    const top = rect.bottom + 8;
+                                    setOpenActionMenu((prev) =>
+                                      prev?.id === user.id
+                                        ? null
+                                        : {
+                                            id: user.id,
+                                            user,
+                                            top,
+                                            left,
+                                          },
+                                    );
+                                  }}
                                   aria-haspopup="menu"
-                                  aria-expanded={actionMenuOpenId === user.id}
+                                  aria-expanded={openActionMenu?.id === user.id}
+                                  data-user-action-menu="true"
                                 >
                                   ⋮
                                 </button>
-                                {actionMenuOpenId === user.id ? (
-                                  <div
-                                    className="absolute right-0 top-full z-10 mt-2 w-40 rounded-2xl border border-slate-200 bg-white shadow-lg"
-                                    role="menu"
-                                  >
-                                    <button
-                                      className="w-full px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
-                                      type="button"
-                                      onClick={() => openEditRoleDialog(user)}
-                                    >
-                                      Edit Role
-                                    </button>
-                                    <button
-                                      className="w-full px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
-                                      type="button"
-                                      onClick={() => openConfirmDialog("delist", user)}
-                                    >
-                                      Delist
-                                    </button>
-                                  </div>
-                                ) : null}
                               </div>
                             ) : (
                               <span className="text-xs uppercase tracking-widest text-slate-400">
@@ -923,6 +962,33 @@ export default function OrganizationAccessControlPage() {
           </section>
         </div>
       </main>
+
+    {openActionMenu && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed z-40 w-40 rounded-2xl border border-slate-200 bg-white shadow-lg"
+            style={{ top: openActionMenu.top, left: openActionMenu.left }}
+            role="menu"
+            data-user-action-menu="true"
+          >
+            <button
+              className="w-full px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-50"
+              type="button"
+              onClick={() => openEditRoleDialog(openActionMenu.user)}
+            >
+              Edit Role
+            </button>
+            <button
+              className="w-full px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-50"
+              type="button"
+              onClick={() => openConfirmDialog("delist", openActionMenu.user)}
+            >
+              Delist
+            </button>
+          </div>,
+          document.body,
+        )
+      : null}
 
     <Dialog
       open={isEditRoleDialogOpen}

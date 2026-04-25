@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical } from "lucide-react";
+import { Filter, MoreVertical } from "lucide-react";
 import {
   getOrganizationSchools,
   getOrganizations,
@@ -64,7 +64,31 @@ export default function OrganizationAdminSchoolListPage() {
   const [loadingCompanyId, setLoadingCompanyId] = useState(null);
   const [deletingCompanyId, setDeletingCompanyId] = useState(null);
   const [organizationUserLevel, setOrganizationUserLevel] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("all");
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const canCreateSchool = organizationUserLevel === "Level2";
+  const categoryMenuRef = useRef(null);
+
+  const categoryOptions = useMemo(() => {
+    const categorySet = new Set();
+    schools.forEach((school) => {
+      const category = String(school?.school_category || "").trim();
+      if (category) {
+        categorySet.add(category);
+      }
+    });
+    return Array.from(categorySet).sort((a, b) => a.localeCompare(b));
+  }, [schools]);
+
+  const filteredSchools = useMemo(() => {
+    if (selectedCategoryFilter === "all") {
+      return schools;
+    }
+    return schools.filter(
+      (school) =>
+        String(school?.school_category || "").trim() === selectedCategoryFilter,
+    );
+  }, [schools, selectedCategoryFilter]);
 
   const loadSchools = useCallback(async () => {
     try {
@@ -167,6 +191,19 @@ export default function OrganizationAdminSchoolListPage() {
       document.removeEventListener("mousedown", handleDocumentClick);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isCategoryMenuOpen) {
+      return undefined;
+    }
+    const handleOutsideClick = (event) => {
+      if (!categoryMenuRef.current?.contains(event.target)) {
+        setIsCategoryMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isCategoryMenuOpen]);
 
   useEffect(() => {
     if (!actionMenuOpenId) {
@@ -373,7 +410,7 @@ export default function OrganizationAdminSchoolListPage() {
         </p>
       );
     }
-    if (schools.length === 0) {
+    if (filteredSchools.length === 0) {
       return <p className="text-sm text-slate-500">No schools found.</p>;
     }
 
@@ -387,7 +424,7 @@ export default function OrganizationAdminSchoolListPage() {
               <th className="py-3 px-3">Category</th>
               <th className="py-3 px-3">Location</th>
               <th className="py-3 px-3">Admin</th>
-              <th className="py-3 px-3">Email</th>
+              {/* <th className="py-3 px-3">Email</th> */}
               <th className="py-3 px-3">UserId</th>
               <th className="py-3 px-3">Address</th>
               <th className="py-3 px-3">District</th>
@@ -398,13 +435,13 @@ export default function OrganizationAdminSchoolListPage() {
             </tr>
           </thead>
           <tbody>
-            {schools.map((school, index) => (
+            {filteredSchools.map((school, index) => (
               <tr
                 key={school.id}
                 className="border-b border-slate-100 last:border-b-0"
               >
                 <td className="py-3 px-3 font-medium text-slate-900">
-                  {index +1 }
+                  {index + 1}
                 </td>
                 <td className="py-3 px-3 font-medium text-slate-900">
                   {school.company_name || "—"}
@@ -418,9 +455,9 @@ export default function OrganizationAdminSchoolListPage() {
                 <td className="py-3 px-3 text-slate-600">
                   {school.admin_name || "—"}
                 </td>
-                <td className="py-3 px-3 text-slate-600">
+                {/* <td className="py-3 px-3 text-slate-600">
                   {school.email || "—"}
-                </td>
+                </td> */}
                  <td className="py-3 px-3 text-slate-600">
                   {school.username || "—"}
                 </td>
@@ -520,6 +557,68 @@ export default function OrganizationAdminSchoolListPage() {
                 </h1>
               </div>
               <div className="flex gap-2">
+                <div className="relative" ref={categoryMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryMenuOpen((prev) => !prev)}
+                    className="inline-flex min-w-[180px] items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-slate-500" />
+                      <span>
+                      {selectedCategoryFilter === "all"
+                        ? "All Categories"
+                        : selectedCategoryFilter}
+                      </span>
+                    </span>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 text-slate-500"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+
+                  {isCategoryMenuOpen ? (
+                    <div className="absolute right-0 z-30 mt-2 min-w-[180px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategoryFilter("all");
+                          setIsCategoryMenuOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left text-sm transition ${
+                          selectedCategoryFilter === "all"
+                            ? "bg-slate-100 font-semibold text-slate-900"
+                            : "text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        All Categories
+                      </button>
+                      {categoryOptions.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategoryFilter(category);
+                            setIsCategoryMenuOpen(false);
+                          }}
+                          className={`block w-full px-3 py-2 text-left text-sm transition ${
+                            selectedCategoryFilter === category
+                              ? "bg-slate-100 font-semibold text-slate-900"
+                              : "text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onClick={() => router.push("/organization-admin")}
