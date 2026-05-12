@@ -9,6 +9,11 @@ urlpatterns = [
         views.category_dashboard_summary,
         name="school-category-dashboard-summary",
     ),
+    path(
+        "school-current-status/<str:company_id>/",
+        views.school_current_status,
+        name="school-current-status",
+    ),
     path("academic-year-list/", views.academic_year_list,
          name="school-academic-year-list"),
     path(

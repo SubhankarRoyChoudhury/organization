@@ -951,6 +951,7 @@ export default function ExamMarksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create");
   const [selectedMark, setSelectedMark] = useState(null);
   const [isPromoteDialogOpen, setIsPromoteDialogOpen] = useState(false);
@@ -1443,8 +1444,8 @@ export default function ExamMarksPage() {
 
   const handleEditMark = (markItem) => {
     setActiveMenu(null);
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
-      setAccessDeniedMessage("Teacher cannot edit");
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
     }
@@ -1462,6 +1463,11 @@ export default function ExamMarksPage() {
 
   const handleDeleteMark = (markItem) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
+      setAccessDeniedMessage("Teacher cannot delete");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDeleteTarget(markItem);
     setIsDeleteDialogOpen(true);
   };
@@ -1476,12 +1482,6 @@ export default function ExamMarksPage() {
   };
 
   const handleEditOverallMarkRow = (markItem) => {
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
-      setAccessDeniedMessage("Teacher cannot edit");
-      setIsAccessDeniedDialogOpen(true);
-      return;
-    }
-
     setDialogMode("edit");
     setSelectedMark(markItem);
     setIsCreateDialogOpen(true);
@@ -1494,6 +1494,11 @@ export default function ExamMarksPage() {
   };
 
   const handleDelistOverallMarkRow = (markItem) => {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
+      setAccessDeniedMessage("Teacher cannot delete");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     handleCloseOverallDetailsDialog({ refresh: false });
     setDeleteTarget(markItem);
     setIsDeleteDialogOpen(true);
@@ -1897,6 +1902,13 @@ export default function ExamMarksPage() {
     if (!deleteTarget?.id) {
       return;
     }
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      setAccessDeniedMessage("Teacher cannot delete");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
 
     const accessToken =
       typeof window !== "undefined"
@@ -1979,6 +1991,27 @@ export default function ExamMarksPage() {
                 </h1>
                 <button
                   type="button"
+                  onClick={() => setIsVideoModalOpen(true)}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm transition hover:bg-sky-50 sm:hidden"
+                  aria-label="Watch exam marks setup video"
+                  title="Watch exam marks setup video"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
                   onClick={handleOpenCreate}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm transition hover:bg-sky-50 sm:hidden"
                   aria-label="Add Exam Marks"
@@ -2030,7 +2063,7 @@ export default function ExamMarksPage() {
                     onChange={handleSectionFilterChange}
                     options={sectionFilterOptions}
                     placeholder="All sections"
-                    disabled={classFilterOptions.length === 0}
+                    disabled={!selectedClassId || sectionFilterOptions.length === 0}
                   />
                   <button
                     type="button"
@@ -2049,26 +2082,49 @@ export default function ExamMarksPage() {
                 </div>
               </div>
               <div className="hidden justify-start lg:flex lg:justify-end">
-                <button
-                  type="button"
-                  onClick={handleOpenCreate}
-                  className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm transition hover:bg-sky-50 sm:h-9 sm:w-auto sm:gap-2 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm sm:font-semibold"
-                  aria-label="Add Exam Marks"
-                  title="Add Exam Marks"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-5 w-5 sm:h-4 sm:w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-hidden="true"
+                <div className="inline-flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsVideoModalOpen(true)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/80 bg-white text-sky-700 shadow-sm transition hover:bg-sky-50"
+                    aria-label="Watch exam marks setup video"
+                    title="Watch exam marks setup video"
                   >
-                    <path d="M12 5v14" />
-                    <path d="M5 12h14" />
-                  </svg>
-                  <span className="hidden sm:inline">Add Exam Marks</span>
-                </button>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenCreate}
+                    className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white text-sky-700 shadow-sm transition hover:bg-sky-50 sm:h-9 sm:w-auto sm:gap-2 sm:rounded-lg sm:px-4 sm:py-2 sm:text-sm sm:font-semibold"
+                    aria-label="Add Exam Marks"
+                    title="Add Exam Marks"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5 sm:h-4 sm:w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                    <span className="hidden sm:inline">Add Exam Marks</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2350,6 +2406,48 @@ export default function ExamMarksPage() {
         </section>
       </div>
 
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Exam Marks Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-[18px] w-[18px]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube-nocookie.com/embed/dXOEl0bSE-Q?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                title="Exam marks setup tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <StudentExamMarksCreateDialog
         key={`${dialogMode}-${selectedMark?.id || "new"}-${isCreateDialogOpen ? "open" : "closed"}`}
         open={isCreateDialogOpen}
@@ -2459,13 +2557,15 @@ export default function ExamMarksPage() {
               >
                 Detail View
               </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteMark(activeMenu.markItem)}
-                className="block w-full px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
-              >
-                Delete
-              </button>
+              {!(currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) ? (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteMark(activeMenu.markItem)}
+                  className="block w-full px-3 py-2 text-left text-sm text-red-600 transition hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              ) : null}
             </div>,
             document.body,
           )

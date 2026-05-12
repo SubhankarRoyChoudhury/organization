@@ -118,7 +118,7 @@ export default function ClassesPage() {
 
   const handleEdit = (classItem) => {
     setActiveMenu(null);
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
       setAccessDeniedMessage("Teacher cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
@@ -129,6 +129,11 @@ export default function ClassesPage() {
   };
 
   const handleDelist = async (classItem) => {
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot delist");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(classItem);
     setIsDelistDialogOpen(true);
   };

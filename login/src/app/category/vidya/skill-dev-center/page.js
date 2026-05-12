@@ -77,17 +77,19 @@ export default function OrganizationAdminSchoolListPage() {
     try {
       setLoading(true);
       setError("");
-      const response = await getOrganizationSchools();
-      setSchools(Array.isArray(response?.schools) ? response.schools : []);
-      setTotal(
-        typeof response?.total === "number"
-          ? response.total
-          : Array.isArray(response?.schools)
-          ? response.schools.length
-          : 0,
-      );
+      const response = await getOrganizationSchools({ sub_group: "Skill" });
+      const allCompanies = Array.isArray(response?.schools) ? response.schools : [];
+      const vidyaSkillCompanies = allCompanies.filter((company) => {
+        const mainGroup = String(company?.main_group || "").trim().toLowerCase();
+        const subGroup = String(
+          company?.sub_group || company?.sub_category || "",
+        ).trim().toLowerCase();
+        return mainGroup === "vidya" && subGroup === "skill";
+      });
+      setSchools(vidyaSkillCompanies);
+      setTotal(vidyaSkillCompanies.length);
     } catch (err) {
-      setError("Unable to load the school list.");
+      setError("Unable to load the skill dev center list.");
       setSchools([]);
     } finally {
       setLoading(false);
@@ -435,24 +437,9 @@ export default function OrganizationAdminSchoolListPage() {
     });
   };
 
-  const openSchoolAnalytics = useCallback(
-    (school) => {
-      const identifier = school?.id || school?.company_id;
-      if (!identifier) {
-        setActionMessageTone("error");
-        setActionMessage("Unable to determine the selected company.");
-        return;
-      }
-      router.push(
-        `/category/vidya/school/${encodeURIComponent(String(identifier))}`,
-      );
-    },
-    [router],
-  );
-
   const renderTable = () => {
     if (loading) {
-      return <p className="text-sm text-slate-500">Loading schools...</p>;
+      return <p className="text-sm text-slate-500">Loading skill dev centers...</p>;
     }
     if (error) {
       return (
@@ -462,7 +449,7 @@ export default function OrganizationAdminSchoolListPage() {
       );
     }
     if (filteredSchools.length === 0) {
-      return <p className="text-sm text-slate-500">No schools found.</p>;
+      return <p className="text-sm text-slate-500">No skill dev centers found.</p>;
     }
 
     return (
@@ -471,7 +458,7 @@ export default function OrganizationAdminSchoolListPage() {
           <thead>
             <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <th className="py-3 px-3">Sl. No.</th>
-              <th className="py-3 px-3">School</th>
+              <th className="py-3 px-3">Skill Dev Center</th>
               <th className="py-3 px-3">Category</th>
               <th className="py-3 px-3">Location</th>
               <th className="py-3 px-3">Admin</th>
@@ -489,17 +476,7 @@ export default function OrganizationAdminSchoolListPage() {
             {filteredSchools.map((school, index) => (
               <tr
                 key={school.id}
-                onDoubleClick={() => openSchoolAnalytics(school)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    openSchoolAnalytics(school);
-                  }
-                }}
-                tabIndex={0}
-                aria-label={`Open analytics for ${school.company_name || "school"}`}
-                className={`cursor-pointer border-b border-slate-100 last:border-b-0 transition-colors focus:bg-sky-50/70 focus:outline-none ${
-                  actionMenuOpenId === school.id ? "bg-sky-50/80" : "bg-white"
-                }`}
+                className="border-b border-slate-100 last:border-b-0"
               >
                 <td className="py-3 px-3 font-medium text-slate-900">
                   {index + 1}
@@ -558,7 +535,6 @@ export default function OrganizationAdminSchoolListPage() {
                   <div
                     className="relative inline-flex justify-end"
                     data-action-menu="true"
-                    onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <button
                       type="button"
@@ -634,7 +610,7 @@ export default function OrganizationAdminSchoolListPage() {
                   Organization Admin
                 </p> */}
                 <h1 className="text-2xl font-semibold text-slate-900">
-                  School List
+                  Skill Dev Center List
                 </h1>
               </div>
               <div className="flex gap-2">
@@ -718,11 +694,11 @@ export default function OrganizationAdminSchoolListPage() {
                       openCompanyAccountDialogWithOrganizationName(
                         "Vidya",
                         "Vidya",
-                        "School",
+                        "Skill",
                       );
                     }}
                   >
-                    Create School
+                    Create Skill Dev Center
                   </button>
                 )}
               </div>

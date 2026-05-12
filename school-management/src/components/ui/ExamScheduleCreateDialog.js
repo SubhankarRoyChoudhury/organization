@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentSchoolInfo } from "@/lib/apiService";
+import DatePickerField from "@/components/ui/DatePickerField";
 
 function getDefaultFormData() {
   return {
+    academicYearId: "",
     examId: "",
     classDetailsId: "",
     sectionDetailsId: "",
@@ -74,6 +76,13 @@ function buildFormDataFromInitialData(initialData) {
   }
 
   return {
+    academicYearId: String(
+      initialData?.academicYearId ||
+        initialData?.academic_year_id ||
+        initialData?.exam?.academic_year_id ||
+        initialData?.exam?.academicYearId ||
+        "",
+    ).trim(),
     examId: String(initialData?.examId || initialData?.exam_id || "").trim(),
     classDetailsId: String(
       initialData?.classDetailsId ||
@@ -296,6 +305,8 @@ export default function ExamScheduleCreateDialog({
   onCreate,
   companyId,
   examTypeOptions = [],
+  academicYears = [],
+  preselectedAcademicYearId = "",
   classOptions = [],
   sectionOptions = [],
   subjectOptions = [],
@@ -332,6 +343,64 @@ export default function ExamScheduleCreateDialog({
   const selectedExamStartDate = String(selectedExamType?.start_date || "").trim();
   const selectedExamEndDate = String(selectedExamType?.end_date || "").trim();
   const selectedExamTotalMarks = getExamTypeTotalMarks(selectedExamType);
+
+  const academicYearOptions = useMemo(
+    () =>
+      [...(Array.isArray(academicYears) ? academicYears : [])]
+        .map((item) => ({
+          id: String(item?.id || "").trim(),
+          label: String(item?.year_name || item?.yearName || "").trim(),
+        }))
+        .filter((item) => item.id && item.label)
+        .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true })),
+    [academicYears],
+  );
+
+  const filteredExamTypeOptions = useMemo(() => {
+    const selectedAcademicYearId = String(formData.academicYearId || "").trim();
+    if (!selectedAcademicYearId) {
+      return [];
+    }
+
+    return examTypeOptions.filter(
+      (item) =>
+        String(
+          item?.academic_year_id ||
+            item?.academicYearId ||
+            item?.academic_year?.id ||
+            item?.academicYear?.id ||
+            "",
+        ).trim() === selectedAcademicYearId,
+    );
+  }, [examTypeOptions, formData.academicYearId]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (String(formData.academicYearId || "").trim()) {
+      return;
+    }
+    if (!selectedExamType) {
+      return;
+    }
+
+    const derivedAcademicYearId = String(
+      selectedExamType?.academic_year_id ||
+        selectedExamType?.academicYearId ||
+        selectedExamType?.academic_year?.id ||
+        selectedExamType?.academicYear?.id ||
+        "",
+    ).trim();
+    if (!derivedAcademicYearId) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      academicYearId: derivedAcademicYearId,
+    }));
+  }, [formData.academicYearId, open, selectedExamType]);
 
   const filteredSectionOptions = useMemo(() => {
     if (!formData.classDetailsId) {
@@ -503,6 +572,26 @@ export default function ExamScheduleCreateDialog({
   ]);
 
   useEffect(() => {
+    if (!open || isEditMode) {
+      return;
+    }
+    const nextAcademicYearId = String(preselectedAcademicYearId || "").trim();
+    if (!nextAcademicYearId) {
+      return;
+    }
+
+    setFormData((prev) => {
+      if (String(prev.academicYearId || "").trim() === nextAcademicYearId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        academicYearId: nextAcademicYearId,
+      };
+    });
+  }, [isEditMode, open, preselectedAcademicYearId]);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
@@ -528,6 +617,15 @@ export default function ExamScheduleCreateDialog({
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    if (name === "academicYearId") {
+      setFormData((prev) => ({
+        ...prev,
+        academicYearId: value,
+        examId: "",
+        totalMarks: "0",
+      }));
+      return;
+    }
     if (name === "classDetailsId") {
       setFormData((prev) => ({
         ...prev,
@@ -574,6 +672,7 @@ export default function ExamScheduleCreateDialog({
     }
 
     const examId = String(formData.examId || "").trim();
+    const academicYearId = String(formData.academicYearId || "").trim();
     const classDetailsId = String(formData.classDetailsId || "").trim();
     const sectionDetailsId = String(formData.sectionDetailsId || "").trim();
     const startTime = String(formData.startTime || "").trim();
@@ -587,6 +686,7 @@ export default function ExamScheduleCreateDialog({
 
     if (
       !examId ||
+      !academicYearId ||
       !classDetailsId ||
       selectedSubjectSchedules.length === 0
     ) {
@@ -618,6 +718,7 @@ export default function ExamScheduleCreateDialog({
     try {
       const payload = {
         id: initialData?.id || null,
+        academicYearId,
         examId,
         classDetailsId,
         sectionDetailsId: sectionDetailsId || undefined,
@@ -812,7 +913,26 @@ export default function ExamScheduleCreateDialog({
         >
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 sm:col-span-2">
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-700">Academic Year</span>
+                <SingleSelectDropdown
+                  value={formData.academicYearId}
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "academicYearId", value },
+                    })
+                  }
+                  options={academicYearOptions}
+                  placeholder="Select academic year"
+                  autoFocus={
+                    !isEditMode &&
+                    !String(formData.academicYearId || "").trim() &&
+                    !String(preselectedAcademicYearId || "").trim()
+                  }
+                />
+              </label>
+
+              <label className="space-y-2">
                 <span className="block text-sm font-medium text-slate-700">Exam Name</span>
                 <SingleSelectDropdown
                   value={formData.examId}
@@ -821,12 +941,14 @@ export default function ExamScheduleCreateDialog({
                       target: { name: "examId", value },
                     })
                   }
-                  options={examTypeOptions.map((item) => ({
+                  options={filteredExamTypeOptions.map((item) => ({
                     id: String(item.id),
                     label: formatOptionLabel(item.exam_name),
                   }))}
-                  placeholder="Select exam type"
-                  autoFocus={!isEditMode}
+                  placeholder={
+                    formData.academicYearId ? "Select exam type" : "Select academic year first"
+                  }
+                  disabled={!formData.academicYearId}
                 />
               </label>
 
@@ -922,18 +1044,15 @@ export default function ExamScheduleCreateDialog({
                                 {formatOptionLabel(entry.subjectName || "-")}
                               </td>
                               <td className="px-3 py-3">
-                                <input
-                                  type="date"
+                                <DatePickerField
                                   value={entry.examDate}
-                                  onChange={(event) =>
-                                    handleSubjectScheduleDateChange(
-                                      entry.subjectId,
-                                      event.target.value,
-                                    )
+                                  onChange={(nextDate) =>
+                                    handleSubjectScheduleDateChange(entry.subjectId, nextDate)
                                   }
-                                  min={selectedExamStartDate || undefined}
-                                  max={selectedExamEndDate || undefined}
-                                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                                  min={selectedExamStartDate || ""}
+                                  max={selectedExamEndDate || ""}
+                                  placeholder="Select date"
+                                  ariaLabel={`Exam date for ${formatOptionLabel(entry.subjectName || "subject")}`}
                                 />
                               </td>
                             </tr>

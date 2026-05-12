@@ -9,6 +9,9 @@ import {
   Home,
   Activity,
   TrendingUp,
+  Building2,
+  ShieldCheck,
+  IndianRupee,
 } from "lucide-react";
 import {
   get_Hospital_User_Login_Details,
@@ -34,6 +37,30 @@ import {
 
 const basePath =
   process.env.NEXT_PUBLIC_BASE_PATH?.trim() || "/hospital-management";
+const normalize = (value) => String(value || "").trim().toLowerCase();
+const getHospitalPermission = (permissions) =>
+  permissions.find((item) => normalize(item?.name) === "hospital management");
+const resolveHospitalAccess = (data) => {
+  const directPermissions = Array.isArray(data?.app_permissions)
+    ? data.app_permissions
+    : [];
+  if (directPermissions.length > 0) {
+    const hospitalPermission = getHospitalPermission(directPermissions);
+    return hospitalPermission ? hospitalPermission.can_access !== false : true;
+  }
+  if (typeof window === "undefined") {
+    return true;
+  }
+  try {
+    const raw = localStorage.getItem("app_permissions");
+    const parsed = raw ? JSON.parse(raw) : [];
+    const permissions = Array.isArray(parsed) ? parsed : [];
+    const hospitalPermission = getHospitalPermission(permissions);
+    return hospitalPermission ? hospitalPermission.can_access !== false : true;
+  } catch {
+    return true;
+  }
+};
 
 export default function AdminDashboardPage() {
   const [monthDays, setMonthDays] = useState([]);
@@ -86,6 +113,8 @@ export default function AdminDashboardPage() {
   const [staffApprovalError, setStaffApprovalError] = useState(null);
   const [isApprovingStaffDirectly, setIsApprovingStaffDirectly] =
     useState(false);
+  const [hasHospitalManagementAccess, setHasHospitalManagementAccess] =
+    useState(true);
 
   // 🧩 Generate all days for a given month
   const generateMonthDays = (year, month) => {
@@ -133,6 +162,7 @@ export default function AdminDashboardPage() {
     }
     get_Hospital_User_Login_Details(username)
       .then((data) => {
+        setHasHospitalManagementAccess(resolveHospitalAccess(data));
         const resolvedCompanyId =
           data?.company_id || data?.companies?.[0]?.company_id;
         if (resolvedCompanyId) {
@@ -1190,11 +1220,17 @@ export default function AdminDashboardPage() {
           ? "Staff"
           : "User";
   const permissionTargetName = getTargetLabel(permissionTarget, "User");
+  const isHospitalAccessDenied = !hasHospitalManagementAccess;
+  const restrictedSectionClass = isHospitalAccessDenied
+    ? "pointer-events-none select-none blur-[2px] opacity-45"
+    : "";
 
   return (
     <div className="min-h-screen h-screen overflow-y-auto bg-[#f3f6fb] p-6 space-y-6 text-gray-800">
       {/* Top Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div
+        className={`grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 ${restrictedSectionClass}`}
+      >
         {statCards.map((card, i) => (
           <div
             key={i}
@@ -1222,6 +1258,59 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-900">Management Shortcuts</h3>
+            <p className="text-sm text-gray-500">
+              Open linked finance, access control, and payroll workspaces.
+            </p>
+            {isHospitalAccessDenied ? (
+              <p className="mt-2 text-sm font-medium text-amber-700">
+                You don&apos;t have access to Hospital Management. Use these
+                shortcuts instead.
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() =>
+                window.location.replace(
+                  "/accounts-management/?from=hospital-management",
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+            >
+              <Building2 className="h-4 w-4" />
+              Accounts Management
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                window.location.replace(
+                  "/access-control/?from=hospital-management",
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Access Control
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                window.location.replace("/swasthya-payroll-management/")
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100"
+            >
+              <IndianRupee className="h-4 w-4" />
+              Payroll
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Patient Appointments Table */}
@@ -1350,7 +1439,9 @@ export default function AdminDashboardPage() {
       </div> */}
 
       {/* Mid Panels */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-15">
+      <div
+        className={`mb-15 grid grid-cols-1 gap-6 lg:grid-cols-3 ${restrictedSectionClass}`}
+      >
         {/* Total Pending List */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-200">
           <h3 className="font-semibold text-gray-900 mb-3">

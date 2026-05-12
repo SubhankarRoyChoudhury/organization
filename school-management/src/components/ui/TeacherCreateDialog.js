@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ClassesCreateDialog from "@/components/ui/ClassesCreateDialog";
+import DatePickerField from "@/components/ui/DatePickerField";
 import SubjectCreateDialog from "@/components/ui/SubjectCreateDialog";
 import {
   createClassList,
   createSubjectList,
+  extractAttachmentIdFromUploadResponse,
+  getAllActiveCompanyUser,
+  getAllCountries,
+  getAllStates,
   getAttachmentsWithIDs,
   getClassList,
   getCurrentSchoolInfo,
@@ -27,6 +32,7 @@ function getDefaultFormData() {
     qualification: "",
     experience: "",
     address: "",
+    country: "India",
     state: "",
     city: "",
     pin: "",
@@ -58,6 +64,54 @@ function buildUsernameFromName(name, schoolCode) {
   return `${normalizedFirstName}.${normalizedSchoolCode}`;
 }
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildAvailableUsernameSuggestions(baseUsername, takenUsernames, limit = 5) {
+  const normalizedBase = normalizeUsername(baseUsername);
+  if (!normalizedBase) {
+    return [];
+  }
+
+  const takenSet = new Set(
+    (Array.isArray(takenUsernames) ? takenUsernames : [])
+      .map((value) => normalizeUsername(value))
+      .filter(Boolean),
+  );
+
+  const suggestions = [];
+  const seen = new Set([normalizedBase]);
+  const candidateSuffixes = ["1", "2", "3", "01", "02", "2026", "2027"];
+  const [basePrefix, ...baseSuffixParts] = normalizedBase.split(".");
+  const baseSuffix = baseSuffixParts.length ? `.${baseSuffixParts.join(".")}` : "";
+
+  const pushCandidate = (candidate) => {
+    const normalizedCandidate = normalizeUsername(candidate);
+    if (
+      !normalizedCandidate ||
+      seen.has(normalizedCandidate) ||
+      takenSet.has(normalizedCandidate)
+    ) {
+      return;
+    }
+    seen.add(normalizedCandidate);
+    suggestions.push(normalizedCandidate);
+  };
+
+  pushCandidate(normalizedBase);
+  candidateSuffixes.forEach((suffix) => {
+    if (baseSuffix) {
+      pushCandidate(`${basePrefix}${suffix}${baseSuffix}`);
+      pushCandidate(`${basePrefix}.${suffix}${baseSuffix}`);
+    } else {
+      pushCandidate(`${basePrefix}${suffix}`);
+    }
+  });
+
+  return suggestions.slice(0, limit);
+}
+
 function buildFormDataFromTeacher(teacher) {
   const dobRaw = String(teacher?.dob || "").trim();
   const dobDateOnly = dobRaw ? dobRaw.slice(0, 10) : "";
@@ -72,6 +126,7 @@ function buildFormDataFromTeacher(teacher) {
     qualification: String(teacher?.qualification || ""),
     experience: String(teacher?.experience || ""),
     address: String(teacher?.address || ""),
+    country: String(teacher?.country || ""),
     state: String(teacher?.state || ""),
     city: String(teacher?.city || ""),
     pin: String(teacher?.pin || ""),
@@ -291,6 +346,12 @@ export default function TeacherCreateDialog({
   const [otpMessage, setOtpMessage] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [companyUsers, setCompanyUsers] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [states, setStates] = useState([]);
+  const [selectedCountryCode, setSelectedCountryCode] = useState("");
+  const [isLoadingCountries, setIsLoadingCountries] = useState(false);
+  const [isLoadingStates, setIsLoadingStates] = useState(false);
   const dialogRef = useRef(null);
   const dragStateRef = useRef(null);
   const profileImageObjectUrlRef = useRef("");
@@ -352,6 +413,7 @@ export default function TeacherCreateDialog({
     setOtpValue("");
     setOtpError("");
     setOtpMessage("");
+    setCompanyUsers([]);
     setDragOffset({ x: 0, y: 0 });
     setIsDragging(false);
     dragStateRef.current = null;
@@ -465,6 +527,120 @@ export default function TeacherCreateDialog({
 
   useEffect(() => {
     if (!open) {
+      return undefined;
+    }
+
+    let mounted = true;
+    getAllActiveCompanyUser()
+      .then((data) => {
+        if (!mounted) {
+          return;
+        }
+        setCompanyUsers(Array.isArray(data?.response) ? data.response : []);
+      })
+      .catch(() => {
+        if (mounted) {
+          setCompanyUsers([]);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCountries = async () => {
+      try {
+        setIsLoadingCountries(true);
+        const response = await getAllCountries();
+        if (cancelled) {
+          return;
+        }
+        const countryList = response?.response || [];
+        setCountries(Array.isArray(countryList) ? countryList : []);
+      } catch (_error) {
+        if (!cancelled) {
+          setCountries([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingCountries(false);
+        }
+      }
+    };
+
+    loadCountries();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!countries.length) {
+      return;
+    }
+
+    if (!formData.country) {
+      setSelectedCountryCode("");
+      setStates([]);
+      return;
+    }
+
+    const matchedCountry = countries.find(
+      (country) =>
+        String(country?.name || "").toLowerCase() ===
+        String(formData.country || "").toLowerCase(),
+    );
+    const nextCountryCode = String(matchedCountry?.alpha_2 || "");
+    if (nextCountryCode !== selectedCountryCode) {
+      setSelectedCountryCode(nextCountryCode);
+    }
+  }, [countries, formData.country, selectedCountryCode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStates = async () => {
+      if (!selectedCountryCode) {
+        setStates([]);
+        return;
+      }
+
+      try {
+        setIsLoadingStates(true);
+        setStates([]);
+        const response = await getAllStates(selectedCountryCode);
+        if (cancelled) {
+          return;
+        }
+        const stateList = response?.response || [];
+        setStates(
+          Array.isArray(stateList)
+            ? stateList.map((state) => state?.name).filter(Boolean)
+            : [],
+        );
+      } catch (_error) {
+        if (!cancelled) {
+          setStates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingStates(false);
+        }
+      }
+    };
+
+    loadStates();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCountryCode]);
+
+  useEffect(() => {
+    if (!open) {
       return;
     }
 
@@ -525,8 +701,17 @@ export default function TeacherCreateDialog({
   };
 
   const handleCreateClassFromTeacherDialog = async (classData) => {
+    const normalizedSubjectIds = Array.from(
+      new Set(
+        (Array.isArray(classData?.subject) ? classData.subject : [])
+          .map((value) => Number(value))
+          .filter(Number.isFinite),
+      ),
+    );
+
     const payload = {
       class_name: classData.className,
+      subject: normalizedSubjectIds,
       company_id: classData.companyId || companyId || undefined,
       created_by: classData.created_by || undefined,
       updated_by: classData.updated_by || undefined,
@@ -587,6 +772,31 @@ export default function TeacherCreateDialog({
     }));
   };
 
+  const handleCountryChange = (event) => {
+    if (isReviewMode || editFormBlocked) {
+      return;
+    }
+    const value = String(event?.target?.value || "");
+    const matchedCountry = countries.find((country) => country?.name === value);
+    setSelectedCountryCode(String(matchedCountry?.alpha_2 || ""));
+    setFormData((prev) => ({
+      ...prev,
+      country: value,
+      state: "",
+    }));
+  };
+
+  const handleStateChange = (event) => {
+    if (isReviewMode || editFormBlocked) {
+      return;
+    }
+    const value = String(event?.target?.value || "");
+    setFormData((prev) => ({
+      ...prev,
+      state: value,
+    }));
+  };
+
   const handleMultiSelectChange = (fieldName, selectedValues) => {
     if (isReviewMode || editFormBlocked) {
       return;
@@ -640,10 +850,7 @@ export default function TeacherCreateDialog({
         usernameValue,
         companyIdValue,
       );
-      const attachmentId =
-        uploadResponse?.response?.attachment_id ||
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+      const attachmentId = extractAttachmentIdFromUploadResponse(uploadResponse);
 
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
@@ -748,6 +955,7 @@ export default function TeacherCreateDialog({
     const parsedAttachmentId = String(formData.attachmentId || "").trim();
     const parsedName = String(formData.name || "").trim();
     const parsedUsername = String(formData.username || "").trim();
+    const normalizedParsedUsername = normalizeUsername(parsedUsername);
     const parsedMobile = String(formData.mobile || "").trim();
     const parsedEmail = String(formData.email || "").trim().toLowerCase();
     const isEmailVerified =
@@ -755,6 +963,7 @@ export default function TeacherCreateDialog({
     const parsedQualification = String(formData.qualification || "").trim();
     const parsedExperience = String(formData.experience || "").trim();
     const parsedAddress = String(formData.address || "").trim();
+    const parsedCountry = String(formData.country || "").trim();
     const parsedState = String(formData.state || "").trim();
     const parsedCity = String(formData.city || "").trim();
     const parsedPin = String(formData.pin || "").trim();
@@ -773,6 +982,7 @@ export default function TeacherCreateDialog({
       !parsedQualification ||
       !parsedExperience ||
       !parsedAddress ||
+      !parsedCountry ||
       !parsedState ||
       !parsedCity ||
       !parsedPin ||
@@ -781,6 +991,16 @@ export default function TeacherCreateDialog({
       preferableClassList.length === 0;
     if (hasMissingRequiredField) {
       return;
+    }
+    if (!isEditMode) {
+      const usernameAlreadyExists = normalizedTeachers.some(
+        (teacher) =>
+          normalizeUsername(teacher?.username) === normalizedParsedUsername,
+      );
+      if (usernameAlreadyExists) {
+        setSubmitErrorMessage("Username already there.");
+        return;
+      }
     }
     if (!isEditMode && !isEmailVerified) {
       setSubmitErrorMessage("Verify email with OTP before creating teacher.");
@@ -809,6 +1029,7 @@ export default function TeacherCreateDialog({
         qualification: parsedQualification,
         experience: parsedExperience,
         address: parsedAddress,
+        country: parsedCountry,
         state: parsedState,
         city: parsedCity,
         pin: parsedPin,
@@ -822,9 +1043,20 @@ export default function TeacherCreateDialog({
       resetDialog();
       onClose();
     } catch (error) {
-      setSubmitErrorMessage(
-        String(error?.message || error || "Unable to create teacher").trim(),
-      );
+      const errorMessage = String(error?.message || error || "").trim();
+      const normalizedErrorMessage = errorMessage.toLowerCase();
+      if (
+        normalizedErrorMessage.includes("username") &&
+        (normalizedErrorMessage.includes("exists") ||
+          normalizedErrorMessage.includes("already") ||
+          normalizedErrorMessage.includes("taken"))
+      ) {
+        setSubmitErrorMessage("Username already there.");
+      } else {
+        setSubmitErrorMessage(
+          String(error?.message || error || "Unable to create teacher").trim(),
+        );
+      }
       setIsSubmitting(false);
     }
   };
@@ -902,9 +1134,36 @@ export default function TeacherCreateDialog({
     setIsDragging(false);
   };
 
-  if (!open) {
-    return null;
-  }
+  const normalizedUsername = normalizeUsername(formData.username);
+  const shouldCheckUsernameAvailability = mode === "create";
+  const { takenUsernames, usernameSuggestions } = useMemo(() => {
+    const mergedTakenUsernames = Array.from(
+      new Set([
+        ...normalizedTeachers
+          .map((teacher) => normalizeUsername(teacher?.username))
+          .filter(Boolean),
+        ...companyUsers
+          .map((user) => normalizeUsername(user?.username))
+          .filter(Boolean),
+      ]),
+    );
+
+    const shouldSuggest =
+      shouldCheckUsernameAvailability &&
+      Boolean(normalizedUsername) &&
+      mergedTakenUsernames.includes(normalizedUsername);
+
+    return {
+      takenUsernames: mergedTakenUsernames,
+      usernameSuggestions: shouldSuggest
+        ? buildAvailableUsernameSuggestions(normalizedUsername, mergedTakenUsernames, 5)
+        : [],
+    };
+  }, [normalizedTeachers, companyUsers, shouldCheckUsernameAvailability, normalizedUsername]);
+  const isUsernameTaken =
+    shouldCheckUsernameAvailability &&
+    Boolean(normalizedUsername) &&
+    takenUsernames.includes(normalizedUsername);
 
   const editBaseline = isEditMode && initialData
     ? buildFormDataFromTeacher(initialData)
@@ -916,6 +1175,10 @@ export default function TeacherCreateDialog({
   const normalizedEmail = String(formData.email || "").trim().toLowerCase();
   const isEmailVerified =
     Boolean(normalizedEmail) && verifiedEmail === normalizedEmail;
+
+  if (!open) {
+    return null;
+  }
 
   const dialogContent = (
     <div className="fixed inset-0 z-[2000] flex items-start justify-center overflow-hidden p-2 pt-0 sm:items-center sm:p-6">
@@ -1087,6 +1350,36 @@ export default function TeacherCreateDialog({
                   placeholder={schoolCode ? `name.${schoolCode}` : "Enter username"}
                   required
                 />
+                {shouldCheckUsernameAvailability && isUsernameTaken ? (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs font-medium text-rose-600">
+                      Username already there.
+                    </p>
+                    {usernameSuggestions.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {usernameSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                username: suggestion,
+                              }))
+                            }
+                            className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : shouldCheckUsernameAvailability && normalizedUsername ? (
+                  <p className="pt-1 text-xs font-medium text-emerald-600">
+                    Username available.
+                  </p>
+                ) : null}
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
@@ -1147,15 +1440,16 @@ export default function TeacherCreateDialog({
                 <span className="text-slate-500 font-semibold">
                   Date of Birth <span className="text-rose-600">*</span>
                 </span>
-                <input
-                  type="date"
-                  name="dob"
+                <DatePickerField
                   value={formData.dob}
-                  onChange={handleChange}
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "dob", value },
+                    })
+                  }
                   readOnly={isReadOnlyMode}
                   disabled={isReadOnlyMode}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  required
+                  ariaLabel="Teacher Date of Birth"
                 />
               </label>
 
@@ -1252,18 +1546,48 @@ export default function TeacherCreateDialog({
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
                 <span className="text-slate-500 font-semibold">
+                  Country <span className="text-rose-600">*</span>
+                </span>
+                <select
+                  name="country"
+                  value={formData.country}
+                  onChange={handleCountryChange}
+                  disabled={isReadOnlyMode || isLoadingCountries}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  required
+                >
+                  <option value="">
+                    {isLoadingCountries ? "Loading countries..." : "Select country"}
+                  </option>
+                  {countries.map((country) => (
+                    <option key={country.alpha_2} value={country.name}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+                <span className="text-slate-500 font-semibold">
                   State <span className="text-rose-600">*</span>
                 </span>
-                <input
+                <select
                   name="state"
                   value={formData.state}
-                  onChange={handleChange}
-                  readOnly={isReadOnlyMode}
-                  disabled={isReadOnlyMode}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  placeholder="Enter state"
+                  onChange={handleStateChange}
+                  disabled={isReadOnlyMode || !formData.country || isLoadingStates}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
                   required
-                />
+                >
+                  <option value="">
+                    {isLoadingStates ? "Loading states..." : "Select state"}
+                  </option>
+                  {states.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">

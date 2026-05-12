@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentSchoolInfo } from "@/lib/apiService";
+import DatePickerField from "@/components/ui/DatePickerField";
 
 const EXAM_TYPE_OPTIONS = [
   { value: "unit_test", label: "Unit Test" },
@@ -26,19 +27,16 @@ const EXAM_NAME_OPTIONS_BY_TYPE = {
     { value: "Unit Test 8", label: "Unit Test 8" },
   ],
   monthly_test: [
-    { value: "Monthly Test 1", label: "Monthly Test 1" },
-    { value: "Monthly Test 2", label: "Monthly Test 2" },
-    { value: "Monthly Test 3", label: "Monthly Test 3" },
+    { value: "Monthly Test", label: "Monthly Test" },
   ],
   quarterly: [
     { value: "Quarterly 1", label: "Quarterly 1" },
     { value: "Quarterly 2", label: "Quarterly 2" },
     { value: "Quarterly 3", label: "Quarterly 3" },
+    { value: "Quarterly 4", label: "Quarterly 4" },
   ],
   half_yearly: [
-    { value: "Half Yearly 1", label: "Half Yearly 1" },
-    { value: "Half Yearly 2", label: "Half Yearly 2" },
-    { value: "Half Yearly 3", label: "Half Yearly 3" },
+    { value: "Half Yearly", label: "Half Yearly" },
   ],
   annual: [
     { value: "Annual", label: "Annual" },
@@ -48,11 +46,20 @@ const EXAM_NAME_OPTIONS_BY_TYPE = {
     { value: "Practical 2", label: "Practical 2" },
   ],
   other: [
-    { value: "Other 1", label: "Other 1" },
-    { value: "Other 2", label: "Other 2" },
-    { value: "Other 3", label: "Other 3" },
+    { value: "Other", label: "Other" },
   ],
 };
+
+function getTotalMarksForExamType(examType, fallbackMarks) {
+  const normalizedType = String(examType || "").trim();
+  if (normalizedType === "unit_test") {
+    return "20";
+  }
+  if (normalizedType === "annual" || normalizedType === "half_yearly") {
+    return "100";
+  }
+  return fallbackMarks;
+}
 
 function getInitialFormData({
   mode = "create",
@@ -435,6 +442,7 @@ export default function ExamTypeCreateDialog({
         : null),
       ...(name === "examType"
         ? {
+            totalMarks: getTotalMarksForExamType(value, prev.totalMarks),
             examName: nextExamNameOptions.some((option) => option.value === prev.examName)
               ? prev.examName
               : "",
@@ -453,6 +461,7 @@ export default function ExamTypeCreateDialog({
         return {
           ...prev,
           examType: nextValue,
+          totalMarks: getTotalMarksForExamType(nextValue, prev.totalMarks),
           examName: nextExamNameOptions.some((option) => option.value === prev.examName)
             ? prev.examName
             : "",
@@ -748,24 +757,28 @@ export default function ExamTypeCreateDialog({
 
               <label className="space-y-2">
                 <span className="block text-sm font-medium text-slate-700">Start Date</span>
-                <input
-                  type="date"
-                  name="startDate"
+                <DatePickerField
                   value={formData.startDate}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "startDate", value },
+                    })
+                  }
+                  ariaLabel="Start Date"
                 />
               </label>
 
               <label className="space-y-2">
                 <span className="block text-sm font-medium text-slate-700">End Date</span>
-                <input
-                  type="date"
-                  name="endDate"
+                <DatePickerField
                   value={formData.endDate}
-                  onChange={handleChange}
-                  min={formData.startDate || undefined}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "endDate", value },
+                    })
+                  }
+                  min={formData.startDate || ""}
+                  ariaLabel="End Date"
                 />
               </label>
 

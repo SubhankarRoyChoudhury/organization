@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
+  CirclePlay,
   Grid,
   List,
   X,
@@ -26,6 +27,7 @@ import {
   getApprovedDoctorTypes,
   updateDoctorSchedule,
   getAllDoctorSchedules,
+  extractAttachmentIdFromUploadResponse,
 } from "@/app/api/apiService";
 import { formatProfileImage } from "@/utils/profileImage";
 
@@ -86,6 +88,7 @@ export default function DoctorListPage() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [pendingDelistDoctor, setPendingDelistDoctor] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
 
   const sanitizeCompanyId = (value) => {
     if (value === undefined || value === null || value === "") return null;
@@ -375,19 +378,20 @@ export default function DoctorListPage() {
           );
           throw new Error("Missing uploader username.");
         }
-        let attachmentId = null;
         try {
           const uploadResponse = await uploadImageFromAnyWhere(
             editProfileImage,
             username,
             companyId,
           );
-          attachmentId =
-            uploadResponse?.response?.file?.id ||
-            uploadResponse?.response?.file?.attachment_id ||
-            uploadResponse?.response?.attachment_id ||
-            uploadResponse?.attachment_id ||
-            null;
+          const attachmentId =
+            extractAttachmentIdFromUploadResponse(uploadResponse);
+          if (!attachmentId) {
+            const uploadMessage =
+              uploadResponse?.response?.msg || "Attachment ID missing.";
+            throw new Error(uploadMessage);
+          }
+          payload.attachment_id = attachmentId;
         } catch (uploadError) {
           const uploadMessage =
             uploadError.response?.data?.response?.msg ||
@@ -395,11 +399,7 @@ export default function DoctorListPage() {
             uploadError.message ||
             "Failed to upload profile image.";
           setProfileImageError(uploadMessage);
-        }
-        if (attachmentId) {
-          payload.attachment_id = attachmentId;
-        } else {
-          payload.profile_image = editProfileImage;
+          throw new Error(uploadMessage);
         }
       }
       const updatedDoctor = await updateDoctor(
@@ -407,14 +407,28 @@ export default function DoctorListPage() {
         payload,
         companyId,
       );
+      const normalizedUpdatedDoctor = {
+        ...selectedDoctor,
+        ...updatedDoctor,
+        attachment_id:
+          updatedDoctor?.attachment_id ??
+          payload?.attachment_id ??
+          selectedDoctor?.attachment_id ??
+          null,
+        image_url:
+          updatedDoctor?.image_url ||
+          editProfilePreview ||
+          selectedDoctor?.image_url ||
+          "",
+      };
       setAllDoctors((prevDoctors) =>
         prevDoctors.map((doctor) =>
-          doctor.id === updatedDoctor.id ? updatedDoctor : doctor,
+          doctor.id === normalizedUpdatedDoctor.id ? normalizedUpdatedDoctor : doctor,
         ),
       );
-      setSelectedDoctor(updatedDoctor);
+      setSelectedDoctor(normalizedUpdatedDoctor);
       setEditProfileImage(null);
-      updateEditPreview(formatProfileImage(updatedDoctor.image_url));
+      updateEditPreview(formatProfileImage(normalizedUpdatedDoctor.image_url));
       setIsEditingDetails(false);
       setLocalMessage("Doctor information updated.");
     } catch (updateError) {
@@ -943,15 +957,25 @@ export default function DoctorListPage() {
       {/* Header Section */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-800">Doctors</h1>
-
-        <button
-          type="button"
-          onClick={handleNavigateToSignup}
-          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#4F46E5] to-[#5B5BF6] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-[#4338CA] hover:to-[#4F46E5]"
-        >
-          <Plus size={18} />
-          Add Doctor
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsVideoModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-full border border-indigo-200 bg-white p-2.5 text-[#4F46E5] shadow-sm transition hover:bg-indigo-50"
+            aria-label="Watch doctor setup video"
+            title="Watch doctor setup video"
+          >
+            <CirclePlay size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={handleNavigateToSignup}
+            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#4F46E5] to-[#5B5BF6] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-[#4338CA] hover:to-[#4F46E5]"
+          >
+            <Plus size={18} />
+            Add Doctor
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -1699,6 +1723,35 @@ export default function DoctorListPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Doctor List Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube-nocookie.com/embed/YfAVweO0-OE?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                title="Doctor setup tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
           </div>
         </div>
       )}

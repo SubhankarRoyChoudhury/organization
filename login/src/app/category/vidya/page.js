@@ -53,6 +53,7 @@ import {
   createStaffDepartment,
   getStaffJobTitles,
   createStaffJobTitle,
+  extractAttachmentIdFromUploadResponse,
 } from "@/app/api/apiService";
 import {
   Dialog,
@@ -77,9 +78,9 @@ const baseModules = [
     enabled: true,
   },
   {
-    title: "Skill Management center",
+    title: "Skill Development center",
     description: "Doctors, Patients, Appointments, and Operations.",
-    href: "/hospital-management",
+    href: "/category/vidya/skill-dev-center",
     icon: Hospital,
     tint: "from-[#0284c7]/10 to-[#0284c7]/30",
     ring: "ring-[#0284c7]/40",
@@ -88,7 +89,7 @@ const baseModules = [
   {
     title: "colleges",
     description: "Doctors, Patients, Appointments, and Operations.",
-    href: "/hospital-management",
+    href: "/category/vidya/college",
     icon: Hospital,
     tint: "from-[#0284c7]/10 to-[#0284c7]/30",
     ring: "ring-[#0284c7]/40",
@@ -1976,8 +1977,7 @@ export default function Vidya() {
         companyId,
       );
       const attachmentId =
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+        extractAttachmentIdFromUploadResponse(uploadResponse);
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
       }
@@ -2001,8 +2001,7 @@ export default function Vidya() {
         companyId,
       );
       const attachmentId =
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+        extractAttachmentIdFromUploadResponse(uploadResponse);
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
       }

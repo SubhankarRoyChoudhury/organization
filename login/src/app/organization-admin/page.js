@@ -6,12 +6,16 @@ import { createPortal } from "react-dom";
 import {
   approveCompany,
   delistCompany,
+  getCompanyInfo,
   getOrganizations,
   getOrganizationCompanySummary,
   getOrganizationHospitals,
   getOrganizationSchools,
+  getOrganizationUserDetails,
+  unapproveCompany,
 } from "@/app/api/apiService";
 import CreateCompanyDialog from "@/components/ui/create-company-dialog";
+import { formatDateValue, toDateInputValue as toLocaleDateInputValue } from "@/lib/companyLocale";
 
 function ActionIcon({ type }) {
   const commonProps = {
@@ -67,62 +71,25 @@ function RowMenuIcon() {
   );
 }
 
-const formatDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    }).format(new Date(value));
-  } catch (_error) {
-    return "-";
-  }
-};
-
-const formatLongDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = date.toLocaleString("en-US", { month: "short" });
-    const year = date.getFullYear();
-    return `${day} ${month}, ${year}`;
-  } catch (_error) {
-    return "-";
-  }
-};
+const formatDate = (value) => formatDateValue(value, { fallback: "-" });
 
 const formatPercent = (value) => `${Math.round(Number(value || 0))}%`;
 
 const toDateInputValue = (value) => {
-  if (!value) {
-    return "";
-  }
-
-  try {
-    return new Date(value).toISOString().slice(0, 10);
-  } catch (_error) {
-    return "";
-  }
+  return toLocaleDateInputValue(value);
 };
 
 export default function OrganizationAdminPage() {
   const router = useRouter();
+  const [updatedOnLabel, setUpdatedOnLabel] = useState("-");
   const [summary, setSummary] = useState({
     total: 0,
     approved: 0,
     delisted: 0,
   });
   const [schoolRecords, setSchoolRecords] = useState([]);
+  const [skillRecords, setSkillRecords] = useState([]);
+  const [collegeRecords, setCollegeRecords] = useState([]);
   const [hospitalRecords, setHospitalRecords] = useState([]);
   const [clinicRecords, setClinicRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,15 +101,23 @@ export default function OrganizationAdminPage() {
     name: "Organization workspace",
   });
   const [openActionMenu, setOpenActionMenu] = useState(null);
+  const [organizationUserLevel, setOrganizationUserLevel] = useState("");
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [actionDialogMode, setActionDialogMode] = useState("");
+  const [recordsDialogMode, setRecordsDialogMode] = useState("");
   const [actionForm, setActionForm] = useState({
     active_from: "",
     active_upto: "",
   });
   const [actionError, setActionError] = useState("");
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+  const [permissionErrorModalMessage, setPermissionErrorModalMessage] = useState("");
   const createCompanyDialogRef = useRef(null);
+  const organizationRecordsSectionRef = useRef(null);
+
+  useEffect(() => {
+    setUpdatedOnLabel(formatDate(new Date().toISOString()));
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -165,12 +140,23 @@ export default function OrganizationAdminPage() {
         setLoading(true);
         setError("");
         const organizationId = localStorage.getItem("organization_id") || "";
-        const [summaryResponse, schoolResponse, hospitalResponse, clinicResponse] = await Promise.all([
+        const localePromise = organizationId
+          ? getCompanyInfo(organizationId).catch(() => null)
+          : Promise.resolve(null);
+        const summaryPromise = Promise.all([
           getOrganizationCompanySummary({
             organization_id: organizationId || undefined,
           }),
           getOrganizationSchools({
             organization_id: organizationId || undefined,
+          }),
+          getOrganizationSchools({
+            organization_id: organizationId || undefined,
+            sub_group: "Skill",
+          }),
+          getOrganizationSchools({
+            organization_id: organizationId || undefined,
+            sub_group: "College",
           }),
           getOrganizationHospitals({
             organization_id: organizationId || undefined,
@@ -180,6 +166,9 @@ export default function OrganizationAdminPage() {
             sub_group: "Clinic",
           }),
         ]);
+        const [[summaryResponse, schoolResponse, skillResponse, collegeResponse, hospitalResponse, clinicResponse]] = await Promise.all(
+          [summaryPromise, localePromise],
+        );
         if (!mounted) {
           return;
         }
@@ -189,6 +178,8 @@ export default function OrganizationAdminPage() {
           delisted: Number(summaryResponse?.delisted || 0),
         });
         setSchoolRecords(Array.isArray(schoolResponse?.schools) ? schoolResponse.schools : []);
+        setSkillRecords(Array.isArray(skillResponse?.schools) ? skillResponse.schools : []);
+        setCollegeRecords(Array.isArray(collegeResponse?.schools) ? collegeResponse.schools : []);
         setHospitalRecords(Array.isArray(hospitalResponse?.hospitals) ? hospitalResponse.hospitals : []);
         setClinicRecords(Array.isArray(clinicResponse?.hospitals) ? clinicResponse.hospitals : []);
       } catch (_err) {
@@ -255,17 +246,70 @@ export default function OrganizationAdminPage() {
     }
   }, [organizationContext.id, organizationContext.name, organizations]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const syncOrganizationUserLevel = async () => {
+      const username =
+        (typeof window !== "undefined" && localStorage.getItem("username")) || "";
+      if (!username) {
+        if (mounted) {
+          setOrganizationUserLevel("");
+        }
+        return;
+      }
+
+      try {
+        const organizationUserDetails = await getOrganizationUserDetails(username);
+        if (!mounted) {
+          return;
+        }
+        setOrganizationUserLevel(String(organizationUserDetails?.level || "").trim());
+      } catch (_error) {
+        if (mounted) {
+          setOrganizationUserLevel("");
+        }
+      }
+    };
+
+    syncOrganizationUserLevel();
+    window.addEventListener("session-context-changed", syncOrganizationUserLevel);
+    return () => {
+      mounted = false;
+      window.removeEventListener(
+        "session-context-changed",
+        syncOrganizationUserLevel,
+      );
+    };
+  }, []);
+
+  const canApproveCompanies = useMemo(
+    () => String(organizationUserLevel || "").trim().toLowerCase() === "level1",
+    [organizationUserLevel],
+  );
+
   const reloadSummary = async () => {
     try {
       setLoading(true);
       setError("");
       const organizationId = localStorage.getItem("organization_id") || "";
-      const [summaryResponse, schoolResponse, hospitalResponse, clinicResponse] = await Promise.all([
+      const localePromise = organizationId
+        ? getCompanyInfo(organizationId).catch(() => null)
+        : Promise.resolve(null);
+      const summaryPromise = Promise.all([
         getOrganizationCompanySummary({
           organization_id: organizationId || undefined,
         }),
         getOrganizationSchools({
           organization_id: organizationId || undefined,
+        }),
+        getOrganizationSchools({
+          organization_id: organizationId || undefined,
+          sub_group: "Skill",
+        }),
+        getOrganizationSchools({
+          organization_id: organizationId || undefined,
+          sub_group: "College",
         }),
         getOrganizationHospitals({
           organization_id: organizationId || undefined,
@@ -275,12 +319,17 @@ export default function OrganizationAdminPage() {
           sub_group: "Clinic",
         }),
       ]);
+      const [[summaryResponse, schoolResponse, skillResponse, collegeResponse, hospitalResponse, clinicResponse]] = await Promise.all(
+        [summaryPromise, localePromise],
+      );
       setSummary({
         total: Number(summaryResponse?.total || 0),
         approved: Number(summaryResponse?.approved || 0),
         delisted: Number(summaryResponse?.delisted || 0),
       });
       setSchoolRecords(Array.isArray(schoolResponse?.schools) ? schoolResponse.schools : []);
+      setSkillRecords(Array.isArray(skillResponse?.schools) ? skillResponse.schools : []);
+      setCollegeRecords(Array.isArray(collegeResponse?.schools) ? collegeResponse.schools : []);
       setHospitalRecords(Array.isArray(hospitalResponse?.hospitals) ? hospitalResponse.hospitals : []);
       setClinicRecords(Array.isArray(clinicResponse?.hospitals) ? clinicResponse.hospitals : []);
     } catch (_err) {
@@ -315,6 +364,105 @@ export default function OrganizationAdminPage() {
       reviewLoad,
     };
   }, [summary]);
+
+  const companySections = useMemo(
+    () => [
+      {
+        key: "vidya",
+        caption: "Vidya",
+        title: "School List",
+        records: schoolRecords,
+        emptyMessage: "No Vidya school records are linked to this organization.",
+      },
+      {
+        key: "vidya-skill",
+        caption: "Vidya",
+        title: "Skill Dev Center List",
+        records: skillRecords,
+        emptyMessage: "No Vidya skill records are linked to this organization.",
+      },
+      {
+        key: "vidya-college",
+        caption: "Vidya",
+        title: "College List",
+        records: collegeRecords,
+        emptyMessage: "No Vidya college records are linked to this organization.",
+      },
+      {
+        key: "swasthya",
+        caption: "Swasthya",
+        title: "Hospital List",
+        records: hospitalRecords,
+        emptyMessage: "No Swasthya hospital records are linked to this organization.",
+      },
+      {
+        key: "clinic",
+        caption: "Swasthya",
+        title: "Clinic List",
+        records: clinicRecords,
+        emptyMessage: "No Swasthya clinic records are linked to this organization.",
+      },
+    ],
+    [schoolRecords, skillRecords, collegeRecords, hospitalRecords, clinicRecords],
+  );
+
+  const pendingSections = useMemo(
+    () =>
+      companySections.map((section) => ({
+        ...section,
+        records: section.records.filter(
+          (company) => !company?.delist && !company?.is_approved,
+        ),
+      })),
+    [companySections],
+  );
+
+  const delistedSections = useMemo(
+    () =>
+      companySections.map((section) => ({
+        ...section,
+        records: section.records.filter((company) => Boolean(company?.delist)),
+      })),
+    [companySections],
+  );
+
+  const activeSections = useMemo(
+    () =>
+      companySections.map((section) => ({
+        ...section,
+        records: section.records.filter(
+          (company) => Boolean(company?.is_approved) && !company?.delist,
+        ),
+      })),
+    [companySections],
+  );
+
+  const tableSections = useMemo(
+    () =>
+      companySections.map((section) => ({
+        ...section,
+        // Main table should not show pending rows.
+        records: section.records.filter(
+          (company) => Boolean(company?.is_approved) || Boolean(company?.delist),
+        ),
+      })),
+    [companySections],
+  );
+
+  const pendingRecordCount = useMemo(
+    () => pendingSections.reduce((total, section) => total + section.records.length, 0),
+    [pendingSections],
+  );
+
+  const delistedRecordCount = useMemo(
+    () => delistedSections.reduce((total, section) => total + section.records.length, 0),
+    [delistedSections],
+  );
+
+  const activeRecordCount = useMemo(
+    () => activeSections.reduce((total, section) => total + section.records.length, 0),
+    [activeSections],
+  );
 
   const quickActions = [
     {
@@ -353,6 +501,41 @@ export default function OrganizationAdminPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!openActionMenu) {
+      return undefined;
+    }
+
+    const recalculateMenuPosition = () => {
+      setOpenActionMenu((previous) => {
+        if (!previous?.anchorEl) {
+          return previous;
+        }
+        const rect = previous.anchorEl.getBoundingClientRect();
+        const menuWidth = 176;
+        const margin = 8;
+        let left = rect.right - menuWidth;
+        left = Math.max(
+          margin,
+          Math.min(left, window.innerWidth - menuWidth - margin),
+        );
+        const top = rect.bottom + 8;
+        return {
+          ...previous,
+          top,
+          left,
+        };
+      });
+    };
+
+    window.addEventListener("scroll", recalculateMenuPosition, true);
+    window.addEventListener("resize", recalculateMenuPosition);
+    return () => {
+      window.removeEventListener("scroll", recalculateMenuPosition, true);
+      window.removeEventListener("resize", recalculateMenuPosition);
+    };
+  }, [openActionMenu]);
+
   const closeActionDialog = () => {
     setSelectedCompany(null);
     setActionDialogMode("");
@@ -364,9 +547,20 @@ export default function OrganizationAdminPage() {
     setIsSubmittingAction(false);
   };
 
+  const closeRecordsDialog = () => {
+    setRecordsDialogMode("");
+  };
+
   const openApproveDialog = (company) => {
+    if (!canApproveCompanies) {
+      setOpenActionMenu(null);
+      setPermissionErrorModalMessage("Only Organization Level1 users can approve records.");
+      return;
+    }
     setSelectedCompany(company);
-    setActionDialogMode(company?.delist ? "enlist" : "approve");
+    setActionDialogMode(
+      company?.delist ? "enlist" : company?.is_approved ? "unapprove" : "approve",
+    );
     setActionForm({
       active_from:
         toDateInputValue(company?.active_from) ||
@@ -388,6 +582,10 @@ export default function OrganizationAdminPage() {
     });
     setActionError("");
     setOpenActionMenu(null);
+  };
+
+  const closePermissionErrorModal = () => {
+    setPermissionErrorModalMessage("");
   };
 
   const handleDelist = async (company) => {
@@ -420,7 +618,7 @@ export default function OrganizationAdminPage() {
       return;
     }
 
-    if (!actionForm.active_from) {
+    if (actionDialogMode !== "unapprove" && !actionForm.active_from) {
       setActionError("Active from is required.");
       return;
     }
@@ -429,14 +627,19 @@ export default function OrganizationAdminPage() {
     setActionError("");
 
     try {
-      const payload = {
-        company_id: selectedCompany?.company_id || selectedCompany?.id,
-        active_from: actionForm.active_from,
-      };
-      if (actionForm.active_upto) {
-        payload.active_upto = actionForm.active_upto;
+      const companyId = selectedCompany?.company_id || selectedCompany?.id;
+      if (actionDialogMode === "unapprove") {
+        await unapproveCompany({ company_id: companyId });
+      } else {
+        const payload = {
+          company_id: companyId,
+          active_from: actionForm.active_from,
+        };
+        if (actionForm.active_upto) {
+          payload.active_upto = actionForm.active_upto;
+        }
+        await approveCompany(payload);
       }
-      await approveCompany(payload);
       await reloadSummary();
       closeActionDialog();
     } catch (error) {
@@ -447,6 +650,86 @@ export default function OrganizationAdminPage() {
       );
       setIsSubmittingAction(false);
     }
+  };
+
+  const getRecordLabel = (sectionKey) => {
+    if (sectionKey === "vidya") {
+      return "School";
+    }
+    if (sectionKey === "vidya-skill") {
+      return "Skill";
+    }
+    if (sectionKey === "vidya-college") {
+      return "College";
+    }
+    if (sectionKey === "clinic") {
+      return "Clinic";
+    }
+    return "Hospital";
+  };
+
+  const getRecordAdminLabel = (sectionKey) => {
+    if (sectionKey === "vidya") {
+      return "School Admin";
+    }
+    if (sectionKey === "vidya-skill") {
+      return "Skill Admin";
+    }
+    if (sectionKey === "vidya-college") {
+      return "College Admin";
+    }
+    if (sectionKey === "clinic") {
+      return "Clinic Admin";
+    }
+    return "Hospital Admin";
+  };
+
+  const getRecordDisplayName = (company, sectionKey) => {
+    const baseName = company?.company_name || "Unnamed record";
+    const location = String(
+      company?.location || company?.district || company?.city || "",
+    ).trim();
+    return location ? `${baseName} (${location})` : baseName;
+  };
+
+  const renderStatusChip = (company) => {
+    if (company?.delist) {
+      return (
+        <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+          Delisted
+        </span>
+      );
+    }
+    if (company?.is_approved) {
+      return (
+        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
+          Approved
+        </span>
+      );
+    }
+    return (
+      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+        Pending
+      </span>
+    );
+  };
+
+  const recordsDialogSections =
+    recordsDialogMode === "pending" ? pendingSections : delistedSections;
+  const recordsDialogCount =
+    recordsDialogMode === "pending" ? pendingRecordCount : delistedRecordCount;
+
+  const focusOrganizationRecordsSection = () => {
+    setOpenActionMenu(null);
+    setRecordsDialogMode("");
+    if (!organizationRecordsSectionRef.current) {
+      return;
+    }
+    organizationRecordsSectionRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    organizationRecordsSectionRef.current.focus({ preventScroll: true });
   };
 
   return (
@@ -506,7 +789,7 @@ export default function OrganizationAdminPage() {
                     </h2>
                   </div>
                   <p className="text-sm text-slate-500">
-                    Updated {formatDate(new Date().toISOString())}
+                    Updated {updatedOnLabel}
                   </p>
                 </div>
 
@@ -521,7 +804,11 @@ export default function OrganizationAdminPage() {
                 ) : (
                   <div className="mt-6 space-y-5">
                     <div className="grid gap-4 md:grid-cols-3">
-                      <div className="rounded-[24px] bg-[#f6faf7] p-4">
+                      <button
+                        type="button"
+                        onClick={focusOrganizationRecordsSection}
+                        className="rounded-[24px] bg-[#f6faf7] p-4 text-left transition hover:ring-2 hover:ring-emerald-200"
+                      >
                         <p className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                           Active records
                         </p>
@@ -529,27 +816,39 @@ export default function OrganizationAdminPage() {
                           {dashboardMetrics.active}
                         </p>
                         <span className="mt-1 block text-[12px] leading-[12px]">All school and hospital records linked to this organization.</span>
-                      </div>
-                      <div className="rounded-[24px] bg-[#fff8ef] p-4">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                          setRecordsDialogMode("pending");
+                        }}
+                        className="rounded-[24px] bg-[#fff8ef] p-4 text-left transition hover:ring-2 hover:ring-amber-200"
+                      >
                         <p className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                           Pending approvals
                         </p>
                         <p className="mt-2 text-3xl text-center font-semibold text-slate-900">
-                          {dashboardMetrics.pending} 
+                          {pendingRecordCount}
                         </p>
                         <span className="mt-1 block text-[12px] leading-[12px]">Registrations still waiting for approval.</span>
-
-                      </div>
-                      <div className="rounded-[24px] bg-[#fff2f2] p-4">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenActionMenu(null);
+                          setRecordsDialogMode("delisted");
+                        }}
+                        className="rounded-[24px] bg-[#fff2f2] p-4 text-left transition hover:ring-2 hover:ring-rose-200"
+                      >
                         <p className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                           Delisted records
                         </p>
                         <p className="mt-2 text-3xl text-center font-semibold text-slate-900">
-                          {summary.delisted}
+                          {delistedRecordCount}
                         </p>
                         <span className="mt-1 block text-[12px] leading-[12px]">Records no longer active in the organization.</span>
-
-                      </div>
+                      </button>
                     </div>
 
                     <div className="space-y-4 rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
@@ -615,7 +914,11 @@ export default function OrganizationAdminPage() {
               </article>
             </section>
 
-            <section className="mt-8 rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+            <section
+              ref={organizationRecordsSectionRef}
+              tabIndex={-1}
+              className="mt-8 rounded-[32px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] outline-none"
+            >
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">
@@ -625,11 +928,11 @@ export default function OrganizationAdminPage() {
                     Group-wise records attached to this organization
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                    Records are separated into Vidya school data and Swasthya hospital and clinic data so each list stays aligned to its main group and subgroup.
+                    Records are separated into Vidya school, skill, and college data plus Swasthya hospital and clinic data so each list stays aligned to its main group and subgroup.
                   </p>
                 </div>
                 <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-                  {schoolRecords.length + hospitalRecords.length + clinicRecords.length} records
+                  {schoolRecords.length + skillRecords.length + collegeRecords.length + hospitalRecords.length + clinicRecords.length} records
                 </div>
               </div>
 
@@ -642,36 +945,16 @@ export default function OrganizationAdminPage() {
                   {error}
                 </div>
               ) : schoolRecords.length === 0 &&
+                skillRecords.length === 0 &&
+                collegeRecords.length === 0 &&
                 hospitalRecords.length === 0 &&
                 clinicRecords.length === 0 ? (
                 <div className="mt-6 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-sm text-slate-500">
-                  No school, hospital, or clinic records are linked to this organization yet.
+                  No school, skill, college, hospital, or clinic records are linked to this organization yet.
                 </div>
               ) : (
                 <div className="mt-6 space-y-6">
-                  {[
-                    {
-                      key: "vidya",
-                      caption: "Vidya",
-                      title: "School List",
-                      records: schoolRecords,
-                      emptyMessage: "No Vidya school records are linked to this organization.",
-                    },
-                    {
-                      key: "swasthya",
-                      caption: "Swasthya",
-                      title: "Hospital List",
-                      records: hospitalRecords,
-                      emptyMessage: "No Swasthya hospital records are linked to this organization.",
-                    },
-                    {
-                      key: "clinic",
-                      caption: "Swasthya",
-                      title: "Clinic List",
-                      records: clinicRecords,
-                      emptyMessage: "No Swasthya clinic records are linked to this organization.",
-                    },
-                  ].map((section) => (
+                  {tableSections.map((section) => (
                     <div
                       key={section.key}
                       className="overflow-hidden rounded-[24px] border border-slate-200"
@@ -695,6 +978,10 @@ export default function OrganizationAdminPage() {
                           <span>
                             {section.key === "vidya"
                               ? "School"
+                              : section.key === "vidya-skill"
+                              ? "Skill"
+                              : section.key === "vidya-college"
+                              ? "College"
                               : section.key === "clinic"
                               ? "Clinic"
                               : "Hospital"}
@@ -702,6 +989,10 @@ export default function OrganizationAdminPage() {
                           <span>
                             {section.key === "vidya"
                               ? "School Admin"
+                              : section.key === "vidya-skill"
+                              ? "Skill Admin"
+                              : section.key === "vidya-college"
+                              ? "College Admin"
                               : section.key === "clinic"
                               ? "Clinic Admin"
                               : "Hospital Admin"}
@@ -714,15 +1005,19 @@ export default function OrganizationAdminPage() {
                           <span className="text-center">Actions</span>
                         </div>
                         {section.records.length ? section.records.map((company) => {
-                          const isApproved = Boolean(company?.is_approved);
                           const isDelisted = Boolean(company?.delist);
                           const schoolOrHospitalName = company.company_name || "Unnamed record";
                           const schoolLocation =
-                            section.key === "vidya"
+                            section.key === "vidya" ||
+                            section.key === "vidya-skill" ||
+                            section.key === "vidya-college"
                               ? (company.location || company.district || "").trim()
                               : "";
                           const schoolDisplayName =
-                            section.key === "vidya" && schoolLocation
+                            (section.key === "vidya" ||
+                              section.key === "vidya-skill" ||
+                              section.key === "vidya-college") &&
+                            schoolLocation
                               ? `${schoolOrHospitalName} (${schoolLocation})`
                               : schoolOrHospitalName;
                           return (
@@ -733,7 +1028,7 @@ export default function OrganizationAdminPage() {
                               <div className="grid grid-cols-[minmax(260px,2.1fr)_minmax(180px,1.2fr)_minmax(150px,0.9fr)_minmax(130px,0.8fr)_96px] gap-4 px-5 py-5 items-center">
                                 <div>
                                   <p className="text-base font-semibold text-slate-900">
-                                    {schoolDisplayName}
+                                    {getRecordDisplayName(company, section.key)}
                                   </p>
                                   {/* <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
                                     ID {company.company_id || company.id}
@@ -748,21 +1043,11 @@ export default function OrganizationAdminPage() {
                                   {company.email || "-"}
                                 </div> */}
 
-                                <div className="text-center">
-                                  <span
-                                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
-                                      isApproved
-                                        ? "bg-emerald-100 text-emerald-700"
-                                        : "bg-amber-100 text-amber-700"
-                                    }`}
-                                  >
-                                    {isApproved ? "Approved" : "Pending"}
-                                  </span>
-                                </div>
+                                <div className="text-center">{renderStatusChip(company)}</div>
 
                                 <div className="text-sm text-center font-medium text-slate-900">
                                   {company.active_from ? (
-                                    formatLongDate(company.active_from)
+                                    formatDate(company.active_from)
                                   ) : (
                                     <span className="inline-flex items-center gap-1 text-slate-500">
                                       
@@ -813,6 +1098,7 @@ export default function OrganizationAdminPage() {
                                               isDelisted,
                                               top,
                                               left,
+                                              anchorEl: event.currentTarget,
                                             },
                                       );
                                     }}
@@ -853,7 +1139,11 @@ export default function OrganizationAdminPage() {
                 onClick={() => openApproveDialog(openActionMenu.company)}
                 className="w-full border-b border-slate-100 px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
               >
-                {openActionMenu.isDelisted ? "Enlist" : "Approve"}
+                {openActionMenu.isDelisted
+                  ? "Enlist"
+                  : openActionMenu.company?.is_approved
+                  ? "Unapprove"
+                  : "Approve"}
               </button>
               <button
                 type="button"
@@ -876,6 +1166,139 @@ export default function OrganizationAdminPage() {
           )
         : null}
 
+      {recordsDialogMode ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6">
+          <div className="w-full max-w-5xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  {recordsDialogMode === "pending" ? "Pending approvals" : "Delisted records"}
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                  {recordsDialogMode === "pending"
+                    ? "Records waiting for review"
+                    : "Records removed from active list"}
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">{recordsDialogCount} records</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeRecordsDialog}
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                Close
+              </button>
+            </div>
+
+            {recordsDialogCount === 0 ? (
+              <div className="mt-6 rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-sm text-slate-500">
+                {recordsDialogMode === "pending"
+                  ? "No pending records to review."
+                  : "No delisted records found."}
+              </div>
+            ) : (
+              <div className="mt-6 max-h-[65vh] space-y-5 overflow-y-auto pr-1">
+                {recordsDialogSections.map((section) =>
+                  section.records.length ? (
+                    <div
+                      key={`dialog-${section.key}`}
+                      className="overflow-hidden rounded-[20px] border border-slate-200"
+                    >
+                      <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
+                            {section.caption}
+                          </p>
+                          <h4 className="mt-1 text-sm font-semibold text-slate-900">
+                            {section.title}
+                          </h4>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                          {section.records.length} records
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <div className="min-w-full">
+                          <div
+                            className={`grid gap-4 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 ${
+                              recordsDialogMode === "pending"
+                                ? "grid-cols-[minmax(260px,2fr)_minmax(180px,1.2fr)_minmax(130px,0.8fr)_minmax(140px,0.85fr)_180px]"
+                                : "grid-cols-[minmax(260px,2fr)_minmax(180px,1.2fr)_minmax(130px,0.8fr)_minmax(140px,0.85fr)]"
+                            }`}
+                          >
+                            <span>{getRecordLabel(section.key)}</span>
+                            <span>{getRecordAdminLabel(section.key)}</span>
+                            <span className="text-center">Status</span>
+                            <span className="text-center">Active Since</span>
+                            {recordsDialogMode === "pending" ? (
+                              <span className="text-center">Actions</span>
+                            ) : null}
+                          </div>
+                          {section.records.map((company) => {
+                            const isWorkingOnThisCompany =
+                              isSubmittingAction &&
+                              (String(selectedCompany?.company_id || selectedCompany?.id || "") ===
+                                String(company?.company_id || company?.id || ""));
+                            return (
+                              <article
+                                key={`dialog-row-${section.key}-${company.id}`}
+                                className="border-t border-slate-200 first:border-t-0"
+                              >
+                                <div
+                                  className={`grid gap-4 px-4 py-4 items-center ${
+                                    recordsDialogMode === "pending"
+                                      ? "grid-cols-[minmax(260px,2fr)_minmax(180px,1.2fr)_minmax(130px,0.8fr)_minmax(140px,0.85fr)_180px]"
+                                      : "grid-cols-[minmax(260px,2fr)_minmax(180px,1.2fr)_minmax(130px,0.8fr)_minmax(140px,0.85fr)]"
+                                  }`}
+                                >
+                                  <div className="text-base font-semibold text-slate-900">
+                                    {getRecordDisplayName(company, section.key)}
+                                  </div>
+                                  <div className="text-sm font-medium text-slate-900">
+                                    {company.admin_name || "-"}
+                                  </div>
+                                  <div className="text-center">{renderStatusChip(company)}</div>
+                                  <div className="text-center text-sm font-medium text-slate-900">
+                                    {company.active_from ? formatDate(company.active_from) : "-"}
+                                  </div>
+                                  {recordsDialogMode === "pending" ? (
+                                    <div className="flex items-center justify-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          closeRecordsDialog();
+                                          openApproveDialog(company);
+                                        }}
+                                        disabled={isSubmittingAction}
+                                        className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        Approve
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDelist(company)}
+                                        disabled={isSubmittingAction}
+                                        className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        {isWorkingOnThisCompany ? "Working..." : "Delist"}
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {selectedCompany && actionDialogMode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
           <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
@@ -886,6 +1309,8 @@ export default function OrganizationAdminPage() {
                     ? "Approve record"
                     : actionDialogMode === "enlist"
                     ? "Enlist record"
+                    : actionDialogMode === "unapprove"
+                    ? "Unapproved"
                     : "Edit validity"}
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-slate-900">
@@ -902,22 +1327,28 @@ export default function OrganizationAdminPage() {
             </div>
 
             <form onSubmit={handleApproveOrUpdateValidity} className="mt-6 space-y-4">
-              <label className="block">
-                <span className="text-sm font-medium  text-slate-700">Active from</span>
-                <input
-                  type="date"
-                  value={actionForm.active_from}
-                  onChange={(event) =>
-                    setActionForm((previous) => ({
-                      ...previous,
-                      active_from: event.target.value,
-                    }))
-                  }
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                />
-              </label>
+              {actionDialogMode === "unapprove" ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  This company will be marked as unapproved.
+                </div>
+              ) : (
+                <label className="block">
+                  <span className="text-sm font-medium  text-slate-700">Active from</span>
+                  <input
+                    type="date"
+                    value={actionForm.active_from}
+                    onChange={(event) =>
+                      setActionForm((previous) => ({
+                        ...previous,
+                        active_from: event.target.value,
+                      }))
+                    }
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                  />
+                </label>
+              )}
 
-              <label className="block">
+              {/* <label className="block">
                 <span className="text-sm font-medium text-slate-700">Active until</span>
                 <input
                   type="date"
@@ -930,7 +1361,7 @@ export default function OrganizationAdminPage() {
                   }
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
                 />
-              </label>
+              </label> */}
 
               {actionError ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -954,13 +1385,53 @@ export default function OrganizationAdminPage() {
                   {isSubmittingAction
                     ? "Saving..."
                     : actionDialogMode === "approve"
-                    ? "Approve record"
+                    ? "Approve Record"
                     : actionDialogMode === "enlist"
-                    ? "Enlist record"
+                    ? "Enlist Record"
+                    : actionDialogMode === "unapprove"
+                    ? "Unapprove Record"
                     : "Save validity"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {permissionErrorModalMessage ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-md rounded-[28px] border border-rose-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-rose-600">
+                  Error
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                  Permission denied
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closePermissionErrorModal}
+                className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {permissionErrorModalMessage}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={closePermissionErrorModal}
+                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

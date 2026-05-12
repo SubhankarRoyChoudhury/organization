@@ -185,6 +185,7 @@ class CompanyUser(models.Model):
     qualification = models.CharField(max_length=100, null=True, default='')
     experience = models.CharField(max_length=100, null=True, default='')
     address = models.CharField(max_length=1000, blank=False, null=True)
+    country = models.CharField(max_length=100, null=True, default='')
     state = models.CharField(max_length=50, null=True, default='')
     city = models.CharField(max_length=50, null=True, default='')
     pin = models.CharField(max_length=50, null=True, default='')

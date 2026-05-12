@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentSchoolInfo } from "@/lib/apiService";
+import DatePickerField from "@/components/ui/DatePickerField";
 
 const INSTALLMENT_OPTIONS = [
   { value: "monthly", label: "Monthly" },
@@ -1123,13 +1124,15 @@ export default function DialogStudentFeesCollection({
 
           <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
             <span>Due Date</span>
-            <input
-              type="date"
-              name="dueDate"
+            <DatePickerField
               value={formData.dueDate}
-              onChange={handleChange}
+              onChange={(value) =>
+                handleChange({
+                  target: { name: "dueDate", value },
+                })
+              }
               disabled={isReviewMode}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              ariaLabel="Due Date"
             />
           </label>
 
@@ -1172,13 +1175,15 @@ export default function DialogStudentFeesCollection({
 
           <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
             <span>Payment Date</span>
-            <input
-              type="date"
-              name="paymentDate"
+            <DatePickerField
               value={formData.paymentDate}
-              onChange={handleChange}
+              onChange={(value) =>
+                handleChange({
+                  target: { name: "paymentDate", value },
+                })
+              }
               disabled={isReviewMode}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              ariaLabel="Payment Date"
             />
           </label>
 

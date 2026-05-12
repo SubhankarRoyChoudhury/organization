@@ -11,6 +11,7 @@ import {
   updateOrganization,
 } from "@/app/api/apiService";
 import OrganizationCreateDialog from "@/components/ui/OrganizationCreateDialog";
+import { formatDateValue, toDateInputValue } from "@/lib/companyLocale";
 import {
   Dialog,
   DialogContent,
@@ -133,6 +134,7 @@ export default function SuperAdminPage() {
   const [inviteStatus, setInviteStatus] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
 
   useEffect(() => {
     const isSuperuser = localStorage.getItem("is_superuser") === "true";
@@ -302,33 +304,8 @@ export default function SuperAdminPage() {
     }
   };
 
-  const formatDate = (value) => {
-    if (!value) {
-      return "-";
-    }
-    if (typeof value === "string") {
-      return value.split("T")[0];
-    }
-    try {
-      return new Date(value).toISOString().split("T")[0];
-    } catch (err) {
-      return "-";
-    }
-  };
-
-  const formatDateInput = (value) => {
-    if (!value) {
-      return "";
-    }
-    if (typeof value === "string") {
-      return value.split("T")[0];
-    }
-    try {
-      return new Date(value).toISOString().split("T")[0];
-    } catch (err) {
-      return "";
-    }
-  };
+  const formatDate = (value) => formatDateValue(value, { fallback: "-" });
+  const formatDateInput = (value) => toDateInputValue(value);
 
   const resetOrganizationCreateForm = () => {
     setOrganizationCreateForm({
@@ -715,6 +692,27 @@ export default function SuperAdminPage() {
               </button>
               <button
                 type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-2.5 text-slate-700 shadow-[0_10px_28px_rgba(15,23,42,0.08)] transition hover:border-slate-300 hover:bg-slate-50"
+                aria-label="Watch super admin setup video"
+                title="Watch super admin setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 className="rounded-full bg-slate-900 px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.32em] text-white shadow-[0_10px_28px_rgba(15,23,42,0.28)] transition hover:bg-slate-800"
                 onClick={() => {
                   resetOrganizationCreateForm();
@@ -907,6 +905,48 @@ export default function SuperAdminPage() {
         </section>
       </div>
 
+      {isVideoModalOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Super Admin Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-[18px] w-[18px]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube-nocookie.com/embed/iTHljTRYqPk?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                title="Super admin setup tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {openMenuId && menuOrganization ? (
         <div
           className="fixed z-[70] w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_20px_40px_rgba(15,23,42,0.14)]"
@@ -952,7 +992,7 @@ export default function SuperAdminPage() {
       ) : null}
 
       {actionOrganization ? (
-        <div className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-10">
+        <div className="fixed inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-900/60 px-4 py-6">
           <div className="w-full max-w-lg rounded-[32px] bg-white p-6 shadow-2xl">
             <h3 className="text-xl font-semibold text-slate-900">
               {actionType === "approve"

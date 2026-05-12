@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Camera } from "lucide-react";
 import {
+  extractAttachmentIdFromUploadResponse,
   registerHospital,
   emailExists,
   uploadImageFromAnyWhere,
@@ -140,8 +141,7 @@ export default function RegiterHospitalPage() {
             payload.username,
           );
           const attachmentId =
-            uploadResponse?.response?.file?.id ||
-            uploadResponse?.response?.file?.attachment_id;
+            extractAttachmentIdFromUploadResponse(uploadResponse);
           if (attachmentId) {
             localStorage.setItem(
               "pending_company_logo_id",

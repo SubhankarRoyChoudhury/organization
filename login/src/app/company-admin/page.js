@@ -7,6 +7,7 @@ import {
   getCompanyInfo,
   getOrganizationUsers,
 } from "@/app/api/apiService";
+import { formatDateValue, syncLocaleSettingsFromPayload } from "@/lib/companyLocale";
 
 const resolveCompanyInfo = (response) => {
   const info =
@@ -51,6 +52,7 @@ export default function CompanyAdminPage() {
         if (!mounted) {
           return;
         }
+        syncLocaleSettingsFromPayload(companyResponse);
         setCompanyInfo(resolveCompanyInfo(companyResponse));
         setCompanyUsers(Array.isArray(usersResponse) ? usersResponse : []);
       } catch (err) {
@@ -75,20 +77,6 @@ export default function CompanyAdminPage() {
   const handleLogout = () => {
     clearLoginSession();
     router.replace("/login");
-  };
-
-  const formatDate = (value) => {
-    if (!value) {
-      return "-";
-    }
-    if (typeof value === "string") {
-      return value.split("T")[0];
-    }
-    try {
-      return new Date(value).toISOString().split("T")[0];
-    } catch (err) {
-      return "-";
-    }
   };
 
   const details = [
@@ -121,7 +109,7 @@ export default function CompanyAdminPage() {
       value: companyInfo.is_approved === true ? "Yes" : "No",
     },
     { label: "Delisted", value: companyInfo.delist === true ? "Yes" : "No" },
-    { label: "Active until", value: formatDate(companyInfo.active_upto) },
+    { label: "Active until", value: formatDateValue(companyInfo.active_upto) },
   ];
 
   return (
@@ -246,7 +234,7 @@ export default function CompanyAdminPage() {
                       Active Until
                     </p>
                     <p className="mt-1 text-xl font-bold text-slate-900 md:text-2xl">
-                      {formatDate(companyInfo.active_upto)}
+                      {formatDateValue(companyInfo.active_upto)}
                     </p>
                   </div>
                 </div>
@@ -312,7 +300,9 @@ export default function CompanyAdminPage() {
                           <td className="px-3 py-3 text-slate-600">{user.phone_number || user.mobile || "-"}</td>
                           <td className="px-3 py-3 text-slate-600">{user.role || "-"}</td>
                           <td className="px-3 py-3 text-slate-600">{user.delist ? "Yes" : "No"}</td>
-                          <td className="px-3 py-3 text-slate-600">{formatDate(user.created_on)}</td>
+                          <td className="px-3 py-3 text-slate-600">
+                            {formatDateValue(user.created_on)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

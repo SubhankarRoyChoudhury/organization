@@ -1,6 +1,10 @@
 import axios from "axios";
 import { environment } from "@/environments/environments";
 import Router from "next/router";
+import {
+  clearStoredLocaleSettings,
+  syncLocaleSettingsFromPayload,
+} from "@/lib/companyLocale";
 
 const BASE_URL = environment.base_url;
 const AUTH_INTERCEPTOR_KEY = "__LOGIN_AUTH_INTERCEPTOR__";
@@ -56,6 +60,7 @@ export const clearLoginSession = () => {
   localStorage.removeItem("company_options");
   localStorage.removeItem("company_main_group");
   localStorage.removeItem("company_sub_group");
+  clearStoredLocaleSettings();
   window.dispatchEvent(new Event("session-context-changed"));
 };
 
@@ -257,12 +262,26 @@ export function uploadImageFromAnyWhere(file, username, companyId) {
     formData.append("username", username);
   }
   if (companyId) {
+    formData.append("company_id", companyId);
     formData.append("cid", companyId);
+  }
+  const accessToken = localStorage.getItem("access_token");
+  if (accessToken) {
+    formData.append("access_token", accessToken);
   }
 
   return axios
     .post(`${BASE_URL}shared_api/uploadImageFromAnyWhere/`, formData)
-    .then((response) => response.data)
+    .then((response) => {
+      const data = response.data;
+      const payload = data?.response;
+      if (payload?.status === false) {
+        const error = new Error(payload?.msg || "Image upload failed on server.");
+        error.response = { data };
+        throw error;
+      }
+      return data;
+    })
     .catch((error) => {
       const status = error?.response?.status;
       const responseData = error?.response?.data;
@@ -289,6 +308,28 @@ export function uploadImageFromAnyWhere(file, username, companyId) {
       );
       throw error;
     });
+}
+
+export function extractAttachmentIdFromUploadResponse(uploadResponse) {
+  const candidates = [
+    uploadResponse?.response?.file?.id,
+    uploadResponse?.response?.file?.attachment_id,
+    uploadResponse?.response?.attachment_id,
+    uploadResponse?.response?.id,
+    uploadResponse?.attachment_id,
+    uploadResponse?.id,
+    uploadResponse?.file?.id,
+    uploadResponse?.file?.attachment_id,
+  ];
+
+  for (const candidate of candidates) {
+    const numericId = Number(candidate);
+    if (Number.isFinite(numericId) && numericId > 0) {
+      return numericId;
+    }
+  }
+
+  return null;
 }
 
 export async function changeUserImage(imageId) {
@@ -1260,9 +1301,14 @@ export function getCompanyInfo(companyId, fileId, options = {}) {
       },
     });
 
+  const normalizeCompanyInfoResponse = (payload) => {
+    syncLocaleSettingsFromPayload(payload);
+    return payload;
+  };
+
   if (byCompanyId) {
     return legacyRequest()
-      .then((response) => response.data)
+      .then((response) => normalizeCompanyInfoResponse(response.data))
       .catch((error) => {
         console.error(
           "Error fetching legacy company info by company_id:",
@@ -1283,13 +1329,13 @@ export function getCompanyInfo(companyId, fileId, options = {}) {
         ...(fileId ? { file_id: fileId } : {}),
       },
     })
-    .then((response) => response.data)
+    .then((response) => normalizeCompanyInfoResponse(response.data))
     .catch(async (error) => {
       const status = error?.response?.status;
       if (status === 400 || status === 403 || status === 404) {
         try {
           const legacyResponse = await legacyRequest();
-          return legacyResponse.data;
+          return normalizeCompanyInfoResponse(legacyResponse.data);
         } catch (legacyError) {
           console.error(
             "Error fetching legacy company info:",
@@ -1306,7 +1352,7 @@ export function getCompanyInfo(companyId, fileId, options = {}) {
     });
 }
 
-export function getCategoryDashboardSummary() {
+export function getCategoryDashboardSummary(params = {}) {
   const access_token = localStorage.getItem("access_token");
 
   return axios
@@ -1315,12 +1361,49 @@ export function getCategoryDashboardSummary() {
         "Content-Type": "application/json",
         ...(access_token ? { Authorization: `Bearer ${access_token}` } : {}),
       },
-      params: access_token ? { access_token } : {},
+      params: {
+        ...(access_token ? { access_token } : {}),
+        ...params,
+      },
     })
     .then((response) => response.data)
     .catch((error) => {
       console.error(
         "Error fetching category dashboard summary:",
+        error.response?.data || error,
+      );
+      throw error;
+    });
+}
+
+export function getSchoolCurrentStatus(companyId, params = {}) {
+  const access_token = localStorage.getItem("access_token");
+  const normalizedCompanyId = String(companyId || "").trim();
+
+  if (!normalizedCompanyId) {
+    return Promise.reject(new Error("School company id is required."));
+  }
+
+  return axios
+    .get(
+      `${BASE_URL}school-management/school-current-status/${encodeURIComponent(
+        normalizedCompanyId,
+      )}/`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...(access_token ? { Authorization: `Bearer ${access_token}` } : {}),
+        },
+        params: {
+          ...(access_token ? { access_token } : {}),
+          ...params,
+        },
+      },
+    )
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error(
+        "Error fetching school current status:",
         error.response?.data || error,
       );
       throw error;
@@ -1619,6 +1702,23 @@ export function approveCompany(payload) {
     .then((response) => response.data)
     .catch((error) => {
       console.error("Error approving company:", error.response?.data || error);
+      throw error;
+    });
+}
+
+export function unapproveCompany(payload) {
+  const access_token = localStorage.getItem("access_token");
+
+  return axios
+    .post(`${BASE_URL}account/unapproveCompany/`, payload, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(access_token ? { Authorization: `Bearer ${access_token}` } : {}),
+      },
+    })
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error("Error unapproving company:", error.response?.data || error);
       throw error;
     });
 }

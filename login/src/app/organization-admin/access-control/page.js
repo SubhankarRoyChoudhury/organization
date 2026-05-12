@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import {
   clearLoginSession,
+  getCompanyInfo,
   getOrganizationUsers,
   updateOrganizationUser,
   createOrganizationUser,
@@ -19,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatDateValue } from "@/lib/companyLocale";
 
 const organizationUserLevelOptions = ["Level1", "Level2"];
 const organizationUserRoleOptions = [
@@ -30,23 +32,7 @@ const organizationUserRoleOptions = [
 ];
 const organizationUserCategoryOptions = ["Vidya", "Swasthya", "Ashram"];
 
-const formatDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = date.toLocaleString("en-US", { month: "short" });
-    const year = date.getFullYear();
-    return `${day} ${month}, ${year}`;
-  } catch (err) {
-    return "-";
-  }
-};
+const formatDate = (value) => formatDateValue(value, { fallback: "-" });
 
 const sanitizeUsernamePart = (value) =>
   String(value || "")
@@ -112,6 +98,7 @@ export default function OrganizationAccessControlPage() {
   const [otpMessage, setOtpMessage] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [createCategorySelections, setCreateCategorySelections] = useState([]);
   const [createForm, setCreateForm] = useState({
     name: "",
@@ -180,9 +167,11 @@ export default function OrganizationAccessControlPage() {
           setLoading(false);
           return;
         }
-        const response = await getOrganizationUsers({
+        const localePromise = getCompanyInfo(orgId).catch(() => null);
+        const usersPromise = getOrganizationUsers({
           organization_id: orgId || undefined,
         });
+        const [response] = await Promise.all([usersPromise, localePromise]);
         if (!mounted) {
           return;
         }
@@ -303,9 +292,11 @@ export default function OrganizationAccessControlPage() {
         setUsers([]);
         return;
       }
-      const response = await getOrganizationUsers({
+      const localePromise = getCompanyInfo(orgId).catch(() => null);
+      const usersPromise = getOrganizationUsers({
         organization_id: orgId || undefined,
       });
+      const [response] = await Promise.all([usersPromise, localePromise]);
       setUsers(Array.isArray(response) ? response : []);
     } catch (err) {
       setError("Unable to load organization users.");
@@ -773,6 +764,27 @@ export default function OrganizationAccessControlPage() {
                 Showing button for all screen widths; disable interaction unless user is Level1.
               */}
               <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white p-2.5 text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+                aria-label="Watch organization user setup video"
+                title="Watch organization user setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
                 className={`rounded-full px-5 py-2.5 text-sm font-semibold text-white transition ${
                   currentUserLevel === "Level1"
                     ? "bg-slate-900 shadow-lg hover:bg-slate-800"
@@ -962,6 +974,48 @@ export default function OrganizationAccessControlPage() {
           </section>
         </div>
       </main>
+
+    {isVideoModalOpen ? (
+      <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 px-4">
+        <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+            <h2 className="text-base font-semibold text-gray-900">
+              Organization User Video Guide
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsVideoModalOpen(false)}
+              className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+              aria-label="Close video modal"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-[18px] w-[18px]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M18 6L6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="aspect-video w-full bg-black">
+            <iframe
+              className="h-full w-full"
+              src="https://www.youtube-nocookie.com/embed/j6nwbRCDtjM?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+              title="Organization user setup tutorial video"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      </div>
+    ) : null}
 
     {openActionMenu && typeof document !== "undefined"
       ? createPortal(

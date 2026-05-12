@@ -161,6 +161,7 @@ class ExamTypeCreateSerializer(serializers.Serializer):
 
 class ExamScheduleSerializer(serializers.ModelSerializer):
     exam_name = serializers.CharField(source="exam.exam_name", read_only=True)
+    academic_year_name = serializers.SerializerMethodField()
     class_name = serializers.CharField(
         source="class_details.class_name", read_only=True)
     section_name = serializers.CharField(
@@ -173,6 +174,8 @@ class ExamScheduleSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "company_id",
+            "academic_year_id",
+            "academic_year_name",
             "exam_id",
             "exam_name",
             "class_details_id",
@@ -196,9 +199,14 @@ class ExamScheduleSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_academic_year_name(self, obj):
+        academic_year = getattr(obj, "academic_year", None)
+        return getattr(academic_year, "year_name", "") if academic_year else ""
+
 
 class ExamScheduleCreateSerializer(serializers.Serializer):
     company_id = serializers.IntegerField(required=False)
+    academic_year_id = serializers.IntegerField(required=False)
     exam_id = serializers.IntegerField(required=True)
     class_details_id = serializers.IntegerField(required=True)
     section_details_id = serializers.IntegerField(
@@ -229,6 +237,12 @@ class ExamScheduleCreateSerializer(serializers.Serializer):
             incoming["company_id"] = incoming.get("companyId")
         if "exam_id" not in incoming and "examId" in incoming:
             incoming["exam_id"] = incoming.get("examId")
+        if "academic_year_id" not in incoming and "academicYearId" in incoming:
+            incoming["academic_year_id"] = incoming.get("academicYearId")
+        if "academic_year_id" not in incoming and "academic_year" in incoming:
+            incoming["academic_year_id"] = incoming.get("academic_year")
+        if "academic_year_id" in incoming and incoming.get("academic_year_id") in ("", None):
+            incoming["academic_year_id"] = None
         if "class_details_id" not in incoming and "classDetailsId" in incoming:
             incoming["class_details_id"] = incoming.get("classDetailsId")
         if "section_details_id" not in incoming and "sectionDetailsId" in incoming:
@@ -623,7 +637,8 @@ class TeacherListCreateSerializer(serializers.Serializer):
         max_length=50, required=False, allow_blank=True)
     mobile = serializers.CharField(
         max_length=100, required=True, allow_blank=False)
-    email = serializers.EmailField(max_length=60, required=True)
+    email = serializers.EmailField(
+        max_length=60, required=False, allow_blank=True)
     is_verified = serializers.BooleanField(required=False, default=False)
     is_head_master = serializers.BooleanField(required=False, default=False)
     password = serializers.CharField(
@@ -635,6 +650,8 @@ class TeacherListCreateSerializer(serializers.Serializer):
         max_length=100, required=False, allow_blank=True)
     address = serializers.CharField(
         max_length=255, required=False, allow_blank=True)
+    country = serializers.CharField(
+        max_length=100, required=False, allow_blank=True)
     state = serializers.CharField(
         max_length=50, required=False, allow_blank=True)
     city = serializers.CharField(
@@ -704,7 +721,8 @@ class NonTeachingListCreateSerializer(serializers.Serializer):
         max_length=100, required=False, allow_blank=True)
     mobile = serializers.CharField(
         max_length=100, required=True, allow_blank=False)
-    email = serializers.EmailField(max_length=60, required=True)
+    email = serializers.EmailField(
+        max_length=60, required=False, allow_blank=True)
     is_verified = serializers.BooleanField(required=False, default=False)
     is_head_master = serializers.BooleanField(required=False, default=False)
     password = serializers.CharField(
@@ -716,6 +734,8 @@ class NonTeachingListCreateSerializer(serializers.Serializer):
         max_length=100, required=False, allow_blank=True)
     address = serializers.CharField(
         max_length=255, required=False, allow_blank=True)
+    country = serializers.CharField(
+        max_length=100, required=False, allow_blank=True)
     state = serializers.CharField(
         max_length=50, required=False, allow_blank=True)
     city = serializers.CharField(
@@ -762,6 +782,7 @@ class StudentListSerializer(serializers.ModelSerializer):
             "dob",
             "guardian_name",
             "address",
+            "country",
             "state",
             "city",
             "pin",
@@ -794,6 +815,8 @@ class StudentListCreateSerializer(serializers.Serializer):
         max_length=100, required=False, allow_blank=True)
     address = serializers.CharField(
         max_length=255, required=False, allow_blank=True)
+    country = serializers.CharField(
+        max_length=100, required=False, allow_blank=True)
     state = serializers.CharField(
         max_length=50, required=False, allow_blank=True)
     city = serializers.CharField(

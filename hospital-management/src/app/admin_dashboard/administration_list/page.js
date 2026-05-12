@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
+  CirclePlay,
   Grid,
   List,
   X,
@@ -24,6 +25,7 @@ import {
   deleteAdministration,
   get_Hospital_User_Login_Details,
   uploadImageFromAnyWhere,
+  extractAttachmentIdFromUploadResponse,
 } from "@/app/api/apiService";
 
 const formatProfileImage = (profilePath) => {
@@ -100,6 +102,7 @@ export default function AdministrationListPage() {
   const [pendingDelistAdministration, setPendingDelistAdministration] =
     useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [detailError, setDetailError] = useState(null);
@@ -460,6 +463,16 @@ export default function AdministrationListPage() {
   const handleEditProfileImageChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      setDetailError("Please select an image file.");
+      return;
+    }
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      setDetailError("Image too large. Max size is 2MB.");
+      return;
+    }
+    setDetailError(null);
     setEditProfileImage(file);
     updateEditPreview(URL.createObjectURL(file));
   };
@@ -496,20 +509,28 @@ export default function AdministrationListPage() {
       };
       if (editProfileImage) {
         const username =
+          loggedInDetails?.username ||
+          loggedInDetails?.user?.username ||
+          localStorage.getItem("username") ||
+          loggedInDetails?.user?.email ||
+          loggedInDetails?.email ||
           selectedAdministration.username ||
           selectedAdministration.email ||
-          localStorage.getItem("username") ||
           "";
+        if (!username) {
+          throw new Error(
+            "Missing uploader username. Please login again and retry.",
+          );
+        }
         const uploadResponse = await uploadImageFromAnyWhere(
           editProfileImage,
           username,
           companyId,
         );
         const attachmentId =
-          uploadResponse?.response?.file?.id ||
-          uploadResponse?.response?.file?.attachment_id;
+          extractAttachmentIdFromUploadResponse(uploadResponse);
         if (!attachmentId) {
-          throw new Error("Attachment ID missing");
+          throw new Error(uploadResponse?.response?.msg || "Attachment ID missing.");
         }
         payload.attachment_id = attachmentId;
       }
@@ -519,21 +540,38 @@ export default function AdministrationListPage() {
         payload,
         companyId,
       );
+      const normalizedUpdatedAdministration = {
+        ...selectedAdministration,
+        ...updatedAdministration,
+        attachment_id:
+          updatedAdministration?.attachment_id ??
+          payload?.attachment_id ??
+          selectedAdministration?.attachment_id ??
+          null,
+        image_url:
+          updatedAdministration?.image_url ||
+          editProfilePreview ||
+          selectedAdministration?.image_url ||
+          "",
+      };
 
       setAllAdministrations((prevAdministrations) =>
         prevAdministrations.map((item) =>
-          item.id === updatedAdministration.id ? updatedAdministration : item,
+          item.id === normalizedUpdatedAdministration.id
+            ? normalizedUpdatedAdministration
+            : item,
         ),
       );
-      setSelectedAdministration(updatedAdministration);
+      setSelectedAdministration(normalizedUpdatedAdministration);
       setEditProfileImage(null);
-      updateEditPreview(formatProfileImage(updatedAdministration.image_url));
+      updateEditPreview(formatProfileImage(normalizedUpdatedAdministration.image_url));
       setIsEditingDetails(false);
       setLocalMessage("Administration updated successfully.");
     } catch (err) {
       const apiError =
         err.response?.data?.errors ||
         err.response?.data?.error ||
+        err.message ||
         "Failed to update administration.";
       if (typeof apiError === "string") {
         setDetailError(apiError);
@@ -655,14 +693,25 @@ export default function AdministrationListPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-800">Administration</h1>
 
-        <button
-          type="button"
-          onClick={handleNavigateToSignup}
-          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#4F46E5] to-[#5B5BF6] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-[#4338CA] hover:to-[#4F46E5]"
-        >
-          <Plus size={18} />
-          Add Adm Staff
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsVideoModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-full border border-indigo-200 bg-white p-2.5 text-[#4F46E5] shadow-sm transition hover:bg-indigo-50"
+            aria-label="Watch administration setup video"
+            title="Watch administration setup video"
+          >
+            <CirclePlay size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={handleNavigateToSignup}
+            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#4F46E5] to-[#5B5BF6] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-[#4338CA] hover:to-[#4F46E5]"
+          >
+            <Plus size={18} />
+            Add Adm Staff
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -1295,6 +1344,35 @@ export default function AdministrationListPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Administration Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube.com/embed/k8bip-uhd98?autoplay=1"
+                title="Administration tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
           </div>
         </div>
       )}

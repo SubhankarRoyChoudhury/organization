@@ -24,6 +24,7 @@ import {
   approveStaff,
   upholdStaff,
   ensureStaffLogin,
+  extractAttachmentIdFromUploadResponse,
 } from "@/app/api/apiService";
 
 const formatProfileImage = (profilePath) => {
@@ -47,6 +48,7 @@ export default function StaffList() {
   const [error, setError] = useState(null);
   const [companyError, setCompanyError] = useState(null);
   const [companyId, setCompanyId] = useState(null);
+  const [loggedInDetails, setLoggedInDetails] = useState(null);
   const [localMessage, setLocalMessage] = useState(null);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -268,6 +270,7 @@ export default function StaffList() {
     if (username) {
       get_Hospital_User_Login_Details(username)
         .then((data) => {
+          setLoggedInDetails(data);
           const resolved = resolveCompanyId(data);
           setCompanyId(resolved);
           setCompanyError(null);
@@ -377,6 +380,16 @@ export default function StaffList() {
   const handleEditProfileImageChange = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      setDetailError("Please select an image file.");
+      return;
+    }
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      setDetailError("Image too large. Max size is 2MB.");
+      return;
+    }
+    setDetailError(null);
     setEditProfileImage(file);
     updateEditPreview(URL.createObjectURL(file));
   };
@@ -432,27 +445,46 @@ export default function StaffList() {
       };
       if (editProfileImage) {
         const username =
+          loggedInDetails?.username ||
+          loggedInDetails?.user?.username ||
+          localStorage.getItem("username") ||
+          loggedInDetails?.user?.email ||
+          loggedInDetails?.email ||
           selectedStaff.username ||
           selectedStaff.email ||
-          localStorage.getItem("username") ||
           "";
+        if (!username) {
+          throw new Error(
+            "Missing uploader username. Please login again and retry.",
+          );
+        }
         const uploadResponse = await uploadImageFromAnyWhere(
           editProfileImage,
           username,
           companyId,
         );
         const attachmentId =
-          uploadResponse?.response?.file?.id ||
-          uploadResponse?.response?.file?.attachment_id;
+          extractAttachmentIdFromUploadResponse(uploadResponse);
         if (!attachmentId) {
-          throw new Error("Attachment ID missing");
+          throw new Error(uploadResponse?.response?.msg || "Attachment ID missing.");
         }
         payload.attachment_id = attachmentId;
       }
 
       const updatedStaff = await updateStaff(staffId, payload, companyId);
       const normalizedUpdatedStaff = {
+        ...selectedStaff,
         ...updatedStaff,
+        attachment_id:
+          updatedStaff?.attachment_id ??
+          payload?.attachment_id ??
+          selectedStaff?.attachment_id ??
+          null,
+        image_url:
+          updatedStaff?.image_url ||
+          editProfilePreview ||
+          selectedStaff?.image_url ||
+          "",
         username:
           updatedStaff?.username ||
           payload.username ||
@@ -474,6 +506,7 @@ export default function StaffList() {
       const apiError =
         err.response?.data?.errors ||
         err.response?.data?.error ||
+        err.message ||
         "Failed to update staff.";
       if (typeof apiError === "string") {
         setDetailError(apiError);

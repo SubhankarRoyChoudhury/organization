@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,29 @@ const permissionLabelMap = {
 };
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalizePath = (value) => {
+  const path = String(value || "").trim().replace(/\/+$/, "");
+  return path || "/";
+};
+const isDashboardPath = (pathname) => {
+  const normalizedPath = normalizePath(pathname);
+  return (
+    normalizedPath.endsWith("/administration_dashboard") ||
+    normalizedPath.endsWith("/admin_dashboard")
+  );
+};
+const hasAdminKeyword = (value) => {
+  const text = normalize(value).replace(/[_-]+/g, " ");
+  return (
+    text === "admin" ||
+    text === "super admin" ||
+    text === "superuser" ||
+    text === "company admin" ||
+    text === "company_admin" ||
+    text.includes("admin group") ||
+    text.includes("company admin group")
+  );
+};
 
 const inferPermissionKey = (label) => {
   const text = normalize(label);
@@ -58,8 +82,69 @@ const getStoredPermissions = () => {
   }
 };
 
+const resolveAdminFromStorage = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const isSuperuser = localStorage.getItem("is_superuser") === "true";
+  const isAdmin = localStorage.getItem("is_admin") === "true";
+  const isOwner = localStorage.getItem("is_owner") === "true";
+  if (isSuperuser || isAdmin || isOwner) {
+    return true;
+  }
+  const roleSources = [
+    localStorage.getItem("role"),
+    localStorage.getItem("roles"),
+    localStorage.getItem("user_role"),
+    localStorage.getItem("user_roles"),
+    localStorage.getItem("user_type"),
+    localStorage.getItem("group"),
+    localStorage.getItem("group_name"),
+  ];
+  return roleSources.some((value) => hasAdminKeyword(value));
+};
+
+const resolveAdminFromDetails = (details) => {
+  const resolvedUser = details?.user ?? details ?? {};
+  const roleSources = [
+    resolvedUser?.role,
+    details?.role,
+    resolvedUser?.user_type,
+    details?.user_type,
+  ];
+  const roleAssignments = [
+    ...(Array.isArray(resolvedUser?.roles) ? resolvedUser.roles : []),
+    ...(Array.isArray(details?.roles) ? details.roles : []),
+  ].map((entry) => String(entry?.name ?? entry ?? "").toLowerCase().trim());
+  const companyAdminFlags = Array.isArray(details?.companies)
+    ? details.companies.some(
+        (company) =>
+          company?.is_admin === true || company?.is_owner === true,
+      )
+    : details?.companies?.is_admin === true || details?.companies?.is_owner === true;
+  const isSuperuser =
+    details?.is_superuser === true ||
+    resolvedUser?.is_superuser === true ||
+    localStorage.getItem("is_superuser") === "true";
+  const hasAdminFlags =
+    resolvedUser?.is_admin === true ||
+    resolvedUser?.is_owner === true ||
+    details?.is_admin === true ||
+    details?.is_owner === true;
+
+  return (
+    isSuperuser ||
+    hasAdminFlags ||
+    companyAdminFlags ||
+    roleSources.some((value) => hasAdminKeyword(value)) ||
+    roleAssignments.some((value) => hasAdminKeyword(value))
+  );
+};
+
 export default function AppPermissionGate({ appName, children }) {
+  const pathname = usePathname();
   const [permission, setPermission] = useState(null);
+  const [isPrivilegedUser, setIsPrivilegedUser] = useState(false);
   const [dialog, setDialog] = useState({
     open: false,
     permissionKey: "can_access",
@@ -69,8 +154,15 @@ export default function AppPermissionGate({ appName, children }) {
     () => String(appName || "this app"),
     [appName],
   );
+  const isDashboardRoute = useMemo(
+    () => isDashboardPath(pathname),
+    [pathname],
+  );
 
   const hasPermission = (permissionKey) => {
+    if (isPrivilegedUser) {
+      return true;
+    }
     if (!permission) {
       return true;
     }
@@ -80,53 +172,68 @@ export default function AppPermissionGate({ appName, children }) {
 
   useEffect(() => {
     const loadPermissions = async () => {
-      const permissions = getStoredPermissions();
-      const matched = permissions.find(
-        (item) => normalize(item?.name) === normalize(appName),
-      );
-      if (matched) {
-        setPermission(matched);
+      const adminFromStorage = resolveAdminFromStorage();
+      if (adminFromStorage) {
+        setIsPrivilegedUser(true);
+        setPermission(null);
         return;
       }
+
+      const permissions = getStoredPermissions();
       const username =
         typeof window !== "undefined"
           ? localStorage.getItem("username")
           : null;
+
+      let details = null;
       if (!username) {
-        setPermission(null);
+        const matched = permissions.find(
+          (item) => normalize(item?.name) === normalize(appName),
+        );
+        setIsPrivilegedUser(false);
+        setPermission(matched || null);
         return;
       }
+
       try {
-        const details = await get_Hospital_User_Login_Details(username);
-        const freshPermissions = details?.app_permissions || [];
-        if (Array.isArray(freshPermissions)) {
-          localStorage.setItem(
-            "app_permissions",
-            JSON.stringify(freshPermissions),
-          );
-          const freshMatch = freshPermissions.find(
-            (item) => normalize(item?.name) === normalize(appName),
-          );
-          setPermission(freshMatch || null);
-          return;
-        }
+        details = await get_Hospital_User_Login_Details(username);
       } catch (error) {
         console.error("Failed to load app permissions:", error);
       }
-      setPermission(null);
+
+      if (details && resolveAdminFromDetails(details)) {
+        setIsPrivilegedUser(true);
+        setPermission(null);
+        return;
+      }
+
+      setIsPrivilegedUser(false);
+      const freshPermissions = details?.app_permissions || [];
+      if (Array.isArray(freshPermissions)) {
+        localStorage.setItem(
+          "app_permissions",
+          JSON.stringify(freshPermissions),
+        );
+        const freshMatch = freshPermissions.find(
+          (item) => normalize(item?.name) === normalize(appName),
+        );
+        if (freshMatch) {
+          setPermission(freshMatch);
+          return;
+        }
+      }
+
+      const matched = permissions.find(
+        (item) => normalize(item?.name) === normalize(appName),
+      );
+      setPermission(matched || null);
     };
 
     loadPermissions();
   }, [appName]);
 
   useEffect(() => {
-    if (permission && permission.can_access === false) {
-      setDialog({ open: true, permissionKey: "can_access" });
-    }
-  }, [permission]);
-
-  useEffect(() => {
-    if (!permission) {
+    if (isPrivilegedUser || isDashboardRoute || !permission) {
       return;
     }
 
@@ -192,21 +299,40 @@ export default function AppPermissionGate({ appName, children }) {
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("submit", handleSubmit, true);
     };
-  }, [permission]);
+  }, [permission, isPrivilegedUser, isDashboardRoute]);
+
+  const mustShowAccessDialog =
+    !isDashboardRoute &&
+    !isPrivilegedUser &&
+    permission &&
+    permission.can_access === false;
+  const dialogOpen = mustShowAccessDialog || dialog.open;
+  const activePermissionKey = mustShowAccessDialog
+    ? "can_access"
+    : dialog.permissionKey;
 
   return (
     <>
       {children}
       <Dialog
-        open={dialog.open}
-        onOpenChange={(open) => setDialog((prev) => ({ ...prev, open }))}
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          if (mustShowAccessDialog && !open) {
+            return;
+          }
+          setDialog((prev) => ({ ...prev, open }));
+        }}
       >
         <DialogContent className="max-w-lg overflow-hidden border border-blue-100 bg-white/95 p-0">
           <div className="relative">
             <button
               type="button"
               className="absolute right-4 top-4 rounded-full border border-blue-100 bg-white/90 p-2 text-gray-500 transition hover:bg-blue-50 hover:text-blue-700"
-              onClick={() => setDialog((prev) => ({ ...prev, open: false }))}
+              onClick={() => {
+                if (!mustShowAccessDialog) {
+                  setDialog((prev) => ({ ...prev, open: false }));
+                }
+              }}
               aria-label="Close dialog"
             >
               <X className="h-4 w-4" />
@@ -222,9 +348,9 @@ export default function AppPermissionGate({ appName, children }) {
                   </DialogTitle>
                   <DialogDescription className="text-sm text-gray-600">
                     You do not have{" "}
-                    {permissionLabelMap[dialog.permissionKey] || "access"}{" "}
+                    {permissionLabelMap[activePermissionKey] || "access"}{" "}
                     permission for {resolvedAppName}. Please contact your
-                    administrator to request access.
+                    administrator.
                   </DialogDescription>
                 </div>
               </div>

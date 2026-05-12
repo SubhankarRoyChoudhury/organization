@@ -240,6 +240,10 @@ export async function uploadImageFromAnyWhere(file, username, companyId) {
     formData.append("company_id", companyId);
     formData.append("cid", companyId);
   }
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    formData.append("access_token", accessToken);
+  }
 
   const response = await fetch("/api/shared_api/uploadImageFromAnyWhere/", {
     method: "POST",
@@ -250,7 +254,33 @@ export async function uploadImageFromAnyWhere(file, username, companyId) {
     throw new Error(await getApiErrorMessage(response, "Unable to upload image"));
   }
 
-  return response.json();
+  const data = await response.json();
+  if (data?.response?.status === false) {
+    throw new Error(data?.response?.msg || "Unable to upload image");
+  }
+  return data;
+}
+
+export function extractAttachmentIdFromUploadResponse(uploadResponse) {
+  const candidates = [
+    uploadResponse?.response?.file?.id,
+    uploadResponse?.response?.file?.attachment_id,
+    uploadResponse?.response?.attachment_id,
+    uploadResponse?.response?.id,
+    uploadResponse?.attachment_id,
+    uploadResponse?.id,
+    uploadResponse?.file?.id,
+    uploadResponse?.file?.attachment_id,
+  ];
+
+  for (const candidate of candidates) {
+    const numericId = Number(candidate);
+    if (Number.isFinite(numericId) && numericId > 0) {
+      return numericId;
+    }
+  }
+
+  return null;
 }
 
 export async function getAttachmentsWithIDs(attachmentIds, accessTokenFromSubmit = "") {
@@ -290,6 +320,33 @@ export async function getAllActiveCompanyUser() {
 
   if (!response.ok) {
     throw new Error("Unable to fetch company users");
+  }
+
+  return response.json();
+}
+
+export async function getAllCountries() {
+  const response = await authorizedFetch("shared_api/getAllCountries");
+
+  if (!response.ok) {
+    throw new Error("Unable to fetch countries");
+  }
+
+  return response.json();
+}
+
+export async function getAllStates(countryCode) {
+  const normalizedCountryCode = String(countryCode || "").trim();
+  if (!normalizedCountryCode) {
+    throw new Error("Country code is required");
+  }
+
+  const response = await authorizedFetch(
+    `shared_api/getAllStates/${normalizedCountryCode}`,
+  );
+
+  if (!response.ok) {
+    throw new Error("Unable to fetch states");
   }
 
   return response.json();

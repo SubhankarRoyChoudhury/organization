@@ -153,6 +153,7 @@ class ExamScheduleAdmin(admin.ModelAdmin):
         "id",
         "company",
         "exam",
+        "academic_year",
         "class_details",
         "section_details",
         "subject",
@@ -168,13 +169,14 @@ class ExamScheduleAdmin(admin.ModelAdmin):
     )
     search_fields = (
         "exam__exam_name",
+        "academic_year__year_name",
         "class_details__class_name",
         "section_details__section",
         "subject__subject_name",
         "company__company_name",
         "company__company_id",
     )
-    list_filter = ("delist", "company", "exam", "class_details",
+    list_filter = ("delist", "company", "exam", "academic_year", "class_details",
                    "section_details", "subject")
 
     def subject_schedules_summary(self, obj):

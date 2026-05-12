@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import DatePickerField from "@/components/ui/DatePickerField";
 import {
+  extractAttachmentIdFromUploadResponse,
+  getAllActiveCompanyUser,
+  getAllCountries,
+  getAllStates,
   getAttachmentsWithIDs,
   getCurrentSchoolInfo,
   sendOrganizationEmailOtp,
@@ -21,6 +26,7 @@ function getDefaultFormData() {
     qualification: "",
     experience: "",
     address: "",
+    country: "India",
     state: "",
     city: "",
     pin: "",
@@ -49,6 +55,54 @@ function buildUsernameFromName(name, schoolCode) {
   return `${normalizedFirstName}.${normalizedSchoolCode}`;
 }
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function buildAvailableUsernameSuggestions(baseUsername, takenUsernames, limit = 5) {
+  const normalizedBase = normalizeUsername(baseUsername);
+  if (!normalizedBase) {
+    return [];
+  }
+
+  const takenSet = new Set(
+    (Array.isArray(takenUsernames) ? takenUsernames : [])
+      .map((value) => normalizeUsername(value))
+      .filter(Boolean),
+  );
+
+  const suggestions = [];
+  const seen = new Set([normalizedBase]);
+  const candidateSuffixes = ["1", "2", "3", "01", "02", "2026", "2027"];
+  const [basePrefix, ...baseSuffixParts] = normalizedBase.split(".");
+  const baseSuffix = baseSuffixParts.length ? `.${baseSuffixParts.join(".")}` : "";
+
+  const pushCandidate = (candidate) => {
+    const normalizedCandidate = normalizeUsername(candidate);
+    if (
+      !normalizedCandidate ||
+      seen.has(normalizedCandidate) ||
+      takenSet.has(normalizedCandidate)
+    ) {
+      return;
+    }
+    seen.add(normalizedCandidate);
+    suggestions.push(normalizedCandidate);
+  };
+
+  pushCandidate(normalizedBase);
+  candidateSuffixes.forEach((suffix) => {
+    if (baseSuffix) {
+      pushCandidate(`${basePrefix}${suffix}${baseSuffix}`);
+      pushCandidate(`${basePrefix}.${suffix}${baseSuffix}`);
+    } else {
+      pushCandidate(`${basePrefix}${suffix}`);
+    }
+  });
+
+  return suggestions.slice(0, limit);
+}
+
 function buildFormDataFromStaff(staff) {
   const dobRaw = String(staff?.dob || "").trim();
   const dobDateOnly = dobRaw ? dobRaw.slice(0, 10) : "";
@@ -62,6 +116,7 @@ function buildFormDataFromStaff(staff) {
     qualification: String(staff?.qualification || ""),
     experience: String(staff?.experience || ""),
     address: String(staff?.address || ""),
+    country: String(staff?.country || ""),
     state: String(staff?.state || ""),
     city: String(staff?.city || ""),
     pin: String(staff?.pin || ""),
@@ -125,6 +180,7 @@ export default function StaffCreateDialog({
   companyId,
   initialData = null,
   mode = "create",
+  staffMembers = [],
 }) {
   const [formData, setFormData] = useState(() => getInitialFormData(mode, initialData));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -144,6 +200,13 @@ export default function StaffCreateDialog({
   const [otpMessage, setOtpMessage] = useState("");
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [serverTakenUsernames, setServerTakenUsernames] = useState([]);
+  const [companyUsers, setCompanyUsers] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [states, setStates] = useState([]);
+  const [selectedCountryCode, setSelectedCountryCode] = useState("");
+  const [isLoadingCountries, setIsLoadingCountries] = useState(false);
+  const [isLoadingStates, setIsLoadingStates] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dialogRef = useRef(null);
@@ -152,6 +215,7 @@ export default function StaffCreateDialog({
   const profileImageObjectUrlRef = useRef("");
   const isEditMode = mode === "edit";
   const isReviewMode = mode === "review";
+  const normalizedStaffMembers = Array.isArray(staffMembers) ? staffMembers : [];
 
   const resetDialog = () => {
     if (profileImageObjectUrlRef.current) {
@@ -174,6 +238,8 @@ export default function StaffCreateDialog({
     setOtpValue("");
     setOtpError("");
     setOtpMessage("");
+    setServerTakenUsernames([]);
+    setCompanyUsers([]);
     setDragOffset({ x: 0, y: 0 });
     setIsDragging(false);
     dragStateRef.current = null;
@@ -310,6 +376,120 @@ export default function StaffCreateDialog({
     };
   }, [open, mode]);
 
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    let mounted = true;
+    getAllActiveCompanyUser()
+      .then((data) => {
+        if (!mounted) {
+          return;
+        }
+        setCompanyUsers(Array.isArray(data?.response) ? data.response : []);
+      })
+      .catch(() => {
+        if (mounted) {
+          setCompanyUsers([]);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCountries = async () => {
+      try {
+        setIsLoadingCountries(true);
+        const response = await getAllCountries();
+        if (cancelled) {
+          return;
+        }
+        const countryList = response?.response || [];
+        setCountries(Array.isArray(countryList) ? countryList : []);
+      } catch (_error) {
+        if (!cancelled) {
+          setCountries([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingCountries(false);
+        }
+      }
+    };
+
+    loadCountries();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!countries.length) {
+      return;
+    }
+
+    if (!formData.country) {
+      setSelectedCountryCode("");
+      setStates([]);
+      return;
+    }
+
+    const matchedCountry = countries.find(
+      (country) =>
+        String(country?.name || "").toLowerCase() ===
+        String(formData.country || "").toLowerCase(),
+    );
+    const nextCountryCode = String(matchedCountry?.alpha_2 || "");
+    if (nextCountryCode !== selectedCountryCode) {
+      setSelectedCountryCode(nextCountryCode);
+    }
+  }, [countries, formData.country, selectedCountryCode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStates = async () => {
+      if (!selectedCountryCode) {
+        setStates([]);
+        return;
+      }
+
+      try {
+        setIsLoadingStates(true);
+        setStates([]);
+        const response = await getAllStates(selectedCountryCode);
+        if (cancelled) {
+          return;
+        }
+        const stateList = response?.response || [];
+        setStates(
+          Array.isArray(stateList)
+            ? stateList.map((state) => state?.name).filter(Boolean)
+            : [],
+        );
+      } catch (_error) {
+        if (!cancelled) {
+          setStates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingStates(false);
+        }
+      }
+    };
+
+    loadStates();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCountryCode]);
+
   const canManageStaff = currentUserRole === "teacher" && currentUserIsHeadMaster;
 
   const handleChange = (event) => {
@@ -336,6 +516,31 @@ export default function StaffCreateDialog({
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleCountryChange = (event) => {
+    if (isReviewMode) {
+      return;
+    }
+    const value = String(event?.target?.value || "");
+    const matchedCountry = countries.find((country) => country?.name === value);
+    setSelectedCountryCode(String(matchedCountry?.alpha_2 || ""));
+    setFormData((prev) => ({
+      ...prev,
+      country: value,
+      state: "",
+    }));
+  };
+
+  const handleStateChange = (event) => {
+    if (isReviewMode) {
+      return;
+    }
+    const value = String(event?.target?.value || "");
+    setFormData((prev) => ({
+      ...prev,
+      state: value,
     }));
   };
 
@@ -382,10 +587,7 @@ export default function StaffCreateDialog({
         usernameValue,
         companyIdValue,
       );
-      const attachmentId =
-        uploadResponse?.response?.attachment_id ||
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+      const attachmentId = extractAttachmentIdFromUploadResponse(uploadResponse);
 
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
@@ -413,7 +615,7 @@ export default function StaffCreateDialog({
   const handleSendOtp = async () => {
     const normalizedEmail = String(formData.email || "").trim().toLowerCase();
     if (!normalizedEmail) {
-      setSubmitErrorMessage("Email is required.");
+      setSubmitErrorMessage("Enter an email first if you want to verify it.");
       return;
     }
 
@@ -438,7 +640,7 @@ export default function StaffCreateDialog({
     event.preventDefault();
     const normalizedEmail = String(formData.email || "").trim().toLowerCase();
     if (!normalizedEmail) {
-      setOtpError("Email is required.");
+      setOtpError("Enter an email first.");
       return;
     }
     if (!otpValue.trim()) {
@@ -483,6 +685,7 @@ export default function StaffCreateDialog({
     const parsedAttachmentId = String(formData.attachmentId || "").trim();
     const parsedName = String(formData.name || "").trim();
     const parsedUsername = String(formData.username || "").trim();
+    const normalizedParsedUsername = normalizeUsername(parsedUsername);
     const parsedRole = String(formData.role || "").trim();
     const parsedMobile = String(formData.mobile || "").trim();
     const parsedEmail = String(formData.email || "").trim().toLowerCase();
@@ -491,6 +694,7 @@ export default function StaffCreateDialog({
     const parsedQualification = String(formData.qualification || "").trim();
     const parsedExperience = String(formData.experience || "").trim();
     const parsedAddress = String(formData.address || "").trim();
+    const parsedCountry = String(formData.country || "").trim();
     const parsedState = String(formData.state || "").trim();
     const parsedCity = String(formData.city || "").trim();
     const parsedPin = String(formData.pin || "").trim();
@@ -500,16 +704,30 @@ export default function StaffCreateDialog({
       !parsedUsername ||
       !parsedRole ||
       !parsedMobile ||
-      !parsedEmail ||
       !parsedDob ||
       !parsedQualification ||
       !parsedExperience ||
       !parsedAddress ||
+      !parsedCountry ||
       !parsedState ||
       !parsedCity ||
       !parsedPin
     ) {
       return;
+    }
+    if (!isEditMode) {
+      const usernameAlreadyExists = normalizedStaffMembers.some(
+        (staff) =>
+          normalizeUsername(staff?.username) === normalizedParsedUsername,
+      );
+      if (usernameAlreadyExists) {
+        setServerTakenUsernames((prev) =>
+          prev.includes(normalizedParsedUsername)
+            ? prev
+            : [...prev, normalizedParsedUsername],
+        );
+        return;
+      }
     }
     const createBlockedByPermission = !canManageStaff;
     if (createBlockedByPermission) {
@@ -518,7 +736,7 @@ export default function StaffCreateDialog({
       );
       return;
     }
-    if (!isEditMode && !isEmailVerified) {
+    if (!isEditMode && parsedEmail && !isEmailVerified) {
       setSubmitErrorMessage("Verify email with OTP before creating non-teaching staff.");
       return;
     }
@@ -539,12 +757,13 @@ export default function StaffCreateDialog({
         job_title: parsedRole,
         mobile: parsedMobile,
         email: parsedEmail,
-        is_verified: true,
+        is_verified: parsedEmail ? isEmailVerified : false,
         password: "abc123",
         dob: parsedDob ? `${parsedDob}T00:00:00Z` : null,
         qualification: parsedQualification,
         experience: parsedExperience,
         address: parsedAddress,
+        country: parsedCountry,
         state: parsedState,
         city: parsedCity,
         pin: parsedPin,
@@ -555,9 +774,24 @@ export default function StaffCreateDialog({
       resetDialog();
       onClose();
     } catch (error) {
-      setSubmitErrorMessage(
-        String(error?.message || error || "Unable to create staff").trim(),
-      );
+      const errorMessage = String(error?.message || error || "").trim();
+      const normalizedErrorMessage = errorMessage.toLowerCase();
+      if (
+        normalizedErrorMessage.includes("username") &&
+        (normalizedErrorMessage.includes("exists") ||
+          normalizedErrorMessage.includes("already") ||
+          normalizedErrorMessage.includes("taken"))
+      ) {
+        setServerTakenUsernames((prev) =>
+          prev.includes(normalizedParsedUsername)
+            ? prev
+            : [...prev, normalizedParsedUsername],
+        );
+      } else {
+        setSubmitErrorMessage(
+          String(error?.message || error || "Unable to create staff").trim(),
+        );
+      }
       setIsSubmitting(false);
     }
   };
@@ -632,13 +866,50 @@ export default function StaffCreateDialog({
     setIsDragging(false);
   };
 
-  if (!open) {
-    return null;
-  }
-
   const normalizedEmail = String(formData.email || "").trim().toLowerCase();
   const isEmailVerified =
     Boolean(normalizedEmail) && verifiedEmail === normalizedEmail;
+  const normalizedUsername = normalizeUsername(formData.username);
+  const shouldCheckUsernameAvailability = mode === "create";
+  const { takenUsernames, usernameSuggestions } = useMemo(() => {
+    const mergedTakenUsernames = Array.from(
+      new Set([
+        ...normalizedStaffMembers
+          .map((staff) => normalizeUsername(staff?.username))
+          .filter(Boolean),
+        ...companyUsers
+          .map((user) => normalizeUsername(user?.username))
+          .filter(Boolean),
+        ...serverTakenUsernames.map((value) => normalizeUsername(value)).filter(Boolean),
+      ]),
+    );
+
+    const shouldSuggest =
+      shouldCheckUsernameAvailability &&
+      Boolean(normalizedUsername) &&
+      mergedTakenUsernames.includes(normalizedUsername);
+
+    return {
+      takenUsernames: mergedTakenUsernames,
+      usernameSuggestions: shouldSuggest
+        ? buildAvailableUsernameSuggestions(normalizedUsername, mergedTakenUsernames, 5)
+        : [],
+    };
+  }, [
+    normalizedStaffMembers,
+    companyUsers,
+    serverTakenUsernames,
+    shouldCheckUsernameAvailability,
+    normalizedUsername,
+  ]);
+  const isUsernameTaken =
+    shouldCheckUsernameAvailability &&
+    Boolean(normalizedUsername) &&
+    takenUsernames.includes(normalizedUsername);
+
+  if (!open) {
+    return null;
+  }
 
   const dialogContent = (
     <div className="fixed inset-0 z-[2000] flex items-start justify-center overflow-hidden p-2 pt-0 sm:items-center sm:p-6">
@@ -796,6 +1067,36 @@ export default function StaffCreateDialog({
                   placeholder={schoolCode ? `name.${schoolCode}` : "Enter username"}
                   required
                 />
+                {shouldCheckUsernameAvailability && isUsernameTaken ? (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs font-medium text-rose-600">
+                      Username already there.
+                    </p>
+                    {usernameSuggestions.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {usernameSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion}
+                            type="button"
+                            onClick={() =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                username: suggestion,
+                              }))
+                            }
+                            className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : shouldCheckUsernameAvailability && normalizedUsername ? (
+                  <p className="pt-1 text-xs font-medium text-emerald-600">
+                    Username available.
+                  </p>
+                ) : null}
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
@@ -816,7 +1117,7 @@ export default function StaffCreateDialog({
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700 lg:col-span-2">
                 <span className="text-slate-500 font-semibold">
-                  Email <span className="text-rose-600">*</span>
+                  Email <span className="text-slate-400">(Optional)</span>
                 </span>
                 <div className="space-y-2">
                   <div className="flex gap-2">
@@ -829,7 +1130,6 @@ export default function StaffCreateDialog({
                       disabled={isReviewMode}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                       placeholder="e.g. staff@school.edu"
-                      required
                     />
                     {!isEditMode && !isReviewMode ? (
                       <button
@@ -846,7 +1146,7 @@ export default function StaffCreateDialog({
                     <span className={`text-xs ${isEmailVerified ? "text-emerald-600" : "text-slate-500"}`}>
                       {isEmailVerified
                         ? "Email verified. You can create the staff record."
-                        : "Send OTP to the email, verify it, then create the staff record."}
+                        : "You can leave this blank, or verify it with OTP if provided."}
                     </span>
                   ) : null}
                 </div>
@@ -856,15 +1156,16 @@ export default function StaffCreateDialog({
                 <span className="text-slate-500 font-semibold">
                   Date of Birth <span className="text-rose-600">*</span>
                 </span>
-                <input
-                  type="date"
-                  name="dob"
+                <DatePickerField
                   value={formData.dob}
-                  onChange={handleChange}
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "dob", value },
+                    })
+                  }
                   readOnly={isReviewMode}
                   disabled={isReviewMode}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  required
+                  ariaLabel="Staff Date of Birth"
                 />
               </label>
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
@@ -939,18 +1240,48 @@ export default function StaffCreateDialog({
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
                 <span className="text-slate-500 font-semibold">
+                  Country <span className="text-rose-600">*</span>
+                </span>
+                <select
+                  name="country"
+                  value={formData.country}
+                  onChange={handleCountryChange}
+                  disabled={isReviewMode || isLoadingCountries}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  required
+                >
+                  <option value="">
+                    {isLoadingCountries ? "Loading countries..." : "Select country"}
+                  </option>
+                  {countries.map((country) => (
+                    <option key={country.alpha_2} value={country.name}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+                <span className="text-slate-500 font-semibold">
                   State <span className="text-rose-600">*</span>
                 </span>
-                <input
+                <select
                   name="state"
                   value={formData.state}
-                  onChange={handleChange}
-                  readOnly={isReviewMode}
-                  disabled={isReviewMode}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  placeholder="Enter state"
+                  onChange={handleStateChange}
+                  disabled={isReviewMode || !formData.country || isLoadingStates}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
                   required
-                />
+                >
+                  <option value="">
+                    {isLoadingStates ? "Loading states..." : "Select state"}
+                  </option>
+                  {states.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
@@ -1018,7 +1349,7 @@ export default function StaffCreateDialog({
                 disabled={
                   isSubmitting ||
                   !canManageStaff ||
-                  (!isEditMode && !isEmailVerified)
+                  (shouldCheckUsernameAvailability && isUsernameTaken)
                 }
                 className="inline-flex h-11 min-w-[132px] items-center justify-center rounded-xl bg-sky-600 px-6 text-[17px] font-semibold leading-none text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[120px] sm:px-5 sm:text-sm"
               >

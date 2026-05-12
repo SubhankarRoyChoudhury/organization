@@ -105,7 +105,7 @@ export default function SubjectListPage() {
   const handleEdit = async (subjectItem) => {
     setActiveMenu(null);
 
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
       setAccessDeniedMessage("Teacher cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
@@ -125,6 +125,11 @@ export default function SubjectListPage() {
 
   const handleDelist = (subjectItem) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot delist");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(subjectItem);
     setIsDelistDialogOpen(true);
   };

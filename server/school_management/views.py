@@ -299,6 +299,311 @@ def _resolve_organization_dashboard_context(request):
     return organization_id, organization_name, school_companies
 
 
+def _round_metric(value, digits=2):
+    if value is None:
+        return None
+    rounded_value = round(float(value), digits)
+    if rounded_value.is_integer():
+        return int(rounded_value)
+    return rounded_value
+
+
+def _resolve_school_company(company_identifier):
+    normalized_identifier = str(company_identifier or "").strip()
+    if not normalized_identifier:
+        return None
+
+    company_filter = Q(company_id=normalized_identifier)
+    try:
+        company_filter |= Q(id=int(normalized_identifier))
+    except (TypeError, ValueError):
+        pass
+
+    return (
+        Companies.objects.filter(
+            company_filter,
+            main_group__iexact="Vidya",
+            sub_group__iexact="School",
+            delist=False,
+        )
+        .order_by("company_name")
+        .first()
+    )
+
+
+def _can_view_school_company_status(request, company):
+    if company is None:
+        return False
+    if getattr(request.user, "is_superuser", False):
+        return True
+
+    username = (getattr(request.user, "username", "") or "").strip()
+    email = (getattr(request.user, "email", "") or "").strip()
+
+    organization_user = OrganizationUser.objects.filter(user=request.user).first()
+    if organization_user is None and (username or email):
+        organization_filter = Q()
+        if username:
+            organization_filter |= Q(username__iexact=username)
+            organization_filter |= Q(email__iexact=username)
+        if email:
+            organization_filter |= Q(email__iexact=email)
+        organization_user = (
+            OrganizationUser.objects.filter(organization_filter)
+            .order_by("id")
+            .first()
+        )
+
+    if (
+        organization_user
+        and str(organization_user.company_id) == str(company.organization_id or "")
+    ):
+        return True
+
+    company_user = None
+    if username or email:
+        company_filter = Q()
+        if username:
+            company_filter |= Q(username__iexact=username)
+            company_filter |= Q(email__iexact=username)
+        if email:
+            company_filter |= Q(email__iexact=email)
+        company_user = (
+            CompanyUser.objects.select_related("company")
+            .filter(company_filter, delist=False)
+            .order_by("id")
+            .first()
+        )
+
+    if not company_user:
+        return False
+
+    return company_user.company_id == company.id
+
+
+@api_view(["GET"])
+@authentication_classes([QueryParamTokenAuthentication])
+@permission_classes([IsAuthenticated])
+def school_current_status(request, company_id):
+    company = _resolve_school_company(company_id)
+    if not company:
+        return Response(
+            {"detail": "Selected school company was not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if not _can_view_school_company_status(request, company):
+        return Response(
+            {"detail": "You do not have access to this school status."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    company_info = (
+        CompanyInfo.objects.filter(company_id=company.id)
+        .values(
+            "company_name",
+            "admin_name",
+            "email",
+            "mobile_no",
+            "address",
+            "city",
+            "pin",
+            "country",
+            "head_office_state",
+            "organization_id",
+        )
+        .first()
+        or {}
+    )
+
+    company_user_students = CompanyUser.objects.filter(
+        company_id=company.id,
+        role__iexact="student",
+        delist=False,
+    ).count()
+    school_student_count = StudentList.objects.filter(
+        company_id=company.id,
+        delist=False,
+    ).count()
+    academic_record_student_count = (
+        StudentAcademicRecord.objects.filter(
+            company_id=company.id,
+            delist=False,
+            student__delist=False,
+        )
+        .values("student_id")
+        .distinct()
+        .count()
+    )
+    total_students = max(
+        company_user_students,
+        school_student_count,
+        academic_record_student_count,
+    )
+
+    company_user_teachers = CompanyUser.objects.filter(
+        company_id=company.id,
+        role__iexact="teacher",
+        delist=False,
+    ).count()
+    school_teacher_count = TeacherList.objects.filter(
+        company_id=company.id,
+        delist=False,
+    ).count()
+    total_teachers = max(company_user_teachers, school_teacher_count)
+
+    student_teacher_ratio = (
+        _round_metric(total_students / total_teachers)
+        if total_teachers
+        else None
+    )
+    student_teacher_ratio_display = (
+        f"{student_teacher_ratio}:1" if student_teacher_ratio is not None else "-"
+    )
+
+    today = timezone.localdate()
+    year_start = today.replace(month=1, day=1)
+
+    conducted_exam_schedules = ExamSchedule.objects.filter(
+        company_id=company.id,
+        delist=False,
+        exam_date__gte=year_start,
+        exam_date__lte=today,
+    )
+    exam_schedules_conducted = conducted_exam_schedules.count()
+    exams_conducted = conducted_exam_schedules.values("exam_id").distinct().count()
+
+    marks_queryset = StudentsMark.objects.filter(
+        company_id=company.id,
+        delist=False,
+        is_absent=False,
+        exam_schedule__exam_date__gte=year_start,
+        exam_schedule__exam_date__lte=today,
+    )
+
+    total_marks_obtained = 0.0
+    total_max_marks = 0.0
+    marks_entries = 0
+    student_mark_totals = {}
+
+    for row in marks_queryset.values(
+        "student_record_id",
+        "student_record__student__name",
+        "marks_obtained",
+        "max_marks",
+    ):
+        marks_obtained = row.get("marks_obtained")
+        max_marks = row.get("max_marks")
+        if marks_obtained is None:
+            continue
+        try:
+            marks_obtained_value = float(marks_obtained)
+            max_marks_value = float(max_marks) if max_marks is not None else 0.0
+        except (TypeError, ValueError):
+            continue
+
+        total_marks_obtained += marks_obtained_value
+        if max_marks_value > 0:
+            total_max_marks += max_marks_value
+        marks_entries += 1
+
+        student_record_id = row.get("student_record_id")
+        if not student_record_id:
+            continue
+        student_stat = student_mark_totals.setdefault(
+            student_record_id,
+            {
+                "name": row.get("student_record__student__name") or "",
+                "marks_obtained": 0.0,
+                "max_marks": 0.0,
+            },
+        )
+        student_stat["marks_obtained"] += marks_obtained_value
+        if max_marks_value > 0:
+            student_stat["max_marks"] += max_marks_value
+
+    students_with_marks = len(student_mark_totals)
+    average_marks_per_student = (
+        _round_metric(total_marks_obtained / students_with_marks)
+        if students_with_marks
+        else None
+    )
+    average_marks_percentage = (
+        _round_metric((total_marks_obtained / total_max_marks) * 100)
+        if total_max_marks
+        else None
+    )
+
+    highest_marks = None
+    highest_marks_percentage = None
+    highest_marks_student_name = ""
+    for student_stat in student_mark_totals.values():
+        student_marks = student_stat.get("marks_obtained") or 0.0
+        if highest_marks is None or student_marks > highest_marks:
+            highest_marks = student_marks
+            highest_marks_student_name = student_stat.get("name") or ""
+            student_max_marks = student_stat.get("max_marks") or 0.0
+            highest_marks_percentage = (
+                _round_metric((student_marks / student_max_marks) * 100)
+                if student_max_marks
+                else None
+            )
+
+    highest_marks = _round_metric(highest_marks) if highest_marks is not None else None
+
+    school_name = company_info.get("company_name") or company.company_name or ""
+    period = {
+        "label": f"{today.year} year to date",
+        "start_date": year_start.isoformat(),
+        "end_date": today.isoformat(),
+    }
+
+    summary = {
+        "total_students": total_students,
+        "total_teachers": total_teachers,
+        "student_teacher_ratio": student_teacher_ratio,
+        "student_teacher_ratio_display": student_teacher_ratio_display,
+        "exams_conducted": exams_conducted,
+        "exam_schedules_conducted": exam_schedules_conducted,
+        "average_marks_per_student": average_marks_per_student,
+        "average_marks_percentage": average_marks_percentage,
+        "highest_marks": highest_marks,
+        "highest_marks_percentage": highest_marks_percentage,
+        "highest_marks_student_name": highest_marks_student_name,
+        "marks_entries": marks_entries,
+        "students_with_marks": students_with_marks,
+    }
+
+    return Response(
+        {
+            "company": {
+                "id": company.id,
+                "company_id": company.company_id,
+                "organization_id": (
+                    company_info.get("organization_id") or company.organization_id
+                ),
+                "company_name": school_name,
+                "school_category": company.school_category or "",
+                "school_code": company.school_code or "",
+                "location": company.location or "",
+                "district": company.district or "",
+                "admin_name": company_info.get("admin_name") or company.admin_name or "",
+                "email": company_info.get("email") or company.email or "",
+                "mobile_no": company_info.get("mobile_no") or company.mobile or "",
+                "address": company_info.get("address") or company.address or "",
+                "city": company_info.get("city") or "",
+                "state": company_info.get("head_office_state") or "",
+                "country": company_info.get("country") or "",
+                "pin": company_info.get("pin") or company.pin or "",
+                "is_approved": bool(company.is_approved),
+            },
+            "period": period,
+            "summary": summary,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
 def _resolve_actor_username(request, serializer_data, key):
     value = (serializer_data.get(key) or "").strip()
     if value:
@@ -377,6 +682,7 @@ def _serialize_student_company_user(company_user):
         "dob": dob_display,
         "guardian_name": company_user.fatherOrHusband or "",
         "address": company_user.address or "",
+        "country": company_user.country or "",
         "state": company_user.state or "",
         "city": company_user.city or "",
         "pin": company_user.pin or "",
@@ -463,6 +769,7 @@ def _serialize_teacher_company_user(company_user):
         "qualification": company_user.qualification or "",
         "experience": company_user.experience or "",
         "address": company_user.address or "",
+        "country": company_user.country or "",
         "state": company_user.state or "",
         "city": company_user.city or "",
         "pin": company_user.pin or "",
@@ -501,6 +808,7 @@ def _serialize_non_teaching_company_user(company_user):
         "qualification": company_user.qualification or "",
         "experience": company_user.experience or "",
         "address": company_user.address or "",
+        "country": company_user.country or "",
         "state": company_user.state or "",
         "city": company_user.city or "",
         "pin": company_user.pin or "",
@@ -1780,6 +2088,7 @@ def exam_schedule_list(request):
         exam_schedule_items = (
             ExamSchedule.objects.select_related(
                 "exam",
+                "academic_year",
                 "class_details",
                 "section_details",
                 "subject",
@@ -1808,6 +2117,34 @@ def exam_schedule_list(request):
     if not exam_item:
         return Response(
             {"detail": "Selected exam type is not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    requested_academic_year_id = request_serializer.validated_data.get("academic_year_id")
+    resolved_academic_year_id = requested_academic_year_id or getattr(exam_item, "academic_year_id", None)
+    if not resolved_academic_year_id:
+        return Response(
+            {"detail": "Academic year is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if (
+        requested_academic_year_id
+        and getattr(exam_item, "academic_year_id", None)
+        and requested_academic_year_id != exam_item.academic_year_id
+    ):
+        return Response(
+            {"detail": "Selected academic year does not match the exam type."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    academic_year_item = AcademicYear.objects.filter(
+        id=resolved_academic_year_id,
+        company_id=company_id,
+        delist=False,
+    ).first()
+    if not academic_year_item:
+        return Response(
+            {"detail": "Selected academic year is not found."},
             status=status.HTTP_404_NOT_FOUND,
         )
 
@@ -1853,6 +2190,7 @@ def exam_schedule_list(request):
     created_item = ExamSchedule.objects.create(
         company_id=company_id,
         exam=exam_item,
+        academic_year=academic_year_item,
         class_details=class_item,
         section_details=section_item,
         subject=subject_item,
@@ -1889,6 +2227,7 @@ def exam_schedule_list_detail(request, exam_schedule_id):
 
     exam_schedule_item = ExamSchedule.objects.select_related(
         "exam",
+        "academic_year",
         "class_details",
         "section_details",
         "subject",
@@ -1935,6 +2274,34 @@ def exam_schedule_list_detail(request, exam_schedule_id):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    requested_academic_year_id = request_serializer.validated_data.get("academic_year_id")
+    resolved_academic_year_id = requested_academic_year_id or getattr(exam_item, "academic_year_id", None)
+    if not resolved_academic_year_id:
+        return Response(
+            {"detail": "Academic year is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if (
+        requested_academic_year_id
+        and getattr(exam_item, "academic_year_id", None)
+        and requested_academic_year_id != exam_item.academic_year_id
+    ):
+        return Response(
+            {"detail": "Selected academic year does not match the exam type."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    academic_year_item = AcademicYear.objects.filter(
+        id=resolved_academic_year_id,
+        company_id=company_user.company_id,
+        delist=False,
+    ).first()
+    if not academic_year_item:
+        return Response(
+            {"detail": "Selected academic year is not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
     class_item = ClassList.objects.filter(
         id=request_serializer.validated_data["class_details_id"],
         company_id=company_user.company_id,
@@ -1973,6 +2340,7 @@ def exam_schedule_list_detail(request, exam_schedule_id):
         )
 
     exam_schedule_item.exam = exam_item
+    exam_schedule_item.academic_year = academic_year_item
     exam_schedule_item.class_details = class_item
     exam_schedule_item.section_details = section_item
     exam_schedule_item.subject = subject_item
@@ -1998,6 +2366,7 @@ def exam_schedule_list_detail(request, exam_schedule_id):
     exam_schedule_item.save(
         update_fields=[
             "exam",
+            "academic_year",
             "class_details",
             "section_details",
             "subject",
@@ -2191,6 +2560,8 @@ def teacher_list(request):
                     "experience") or "").strip(),
                 address=(request_serializer.validated_data.get(
                     "address") or "").strip(),
+                country=(request_serializer.validated_data.get(
+                    "country") or "").strip(),
                 state=(request_serializer.validated_data.get(
                     "state") or "").strip(),
                 city=(request_serializer.validated_data.get(
@@ -2474,6 +2845,9 @@ def teacher_list_detail(request, teacher_id):
             teacher_item.address = (
                 request_serializer.validated_data.get("address") or ""
             ).strip()
+            teacher_item.country = (
+                request_serializer.validated_data.get("country") or ""
+            ).strip()
             teacher_item.state = (
                 request_serializer.validated_data.get("state") or ""
             ).strip()
@@ -2503,6 +2877,7 @@ def teacher_list_detail(request, teacher_id):
                     "qualification",
                     "experience",
                     "address",
+                    "country",
                     "state",
                     "city",
                     "pin",
@@ -2588,7 +2963,7 @@ def non_teaching_staff_list(request):
             {"detail": "Only a logged-in head master can create non-teaching staff."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    if not is_verified:
+    if email and not is_verified:
         return Response(
             {"detail": "Verify email with OTP before creating non-teaching staff."},
             status=status.HTTP_400_BAD_REQUEST,
@@ -2626,7 +3001,7 @@ def non_teaching_staff_list(request):
             {"detail": "This non-teaching username already exists for your school."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    if CompanyUser.objects.filter(company_id=company_id, email__iexact=email).exists():
+    if email and CompanyUser.objects.filter(company_id=company_id, email__iexact=email).exists():
         return Response(
             {"detail": "This non-teaching email already exists for your school."},
             status=status.HTTP_400_BAD_REQUEST,
@@ -2685,6 +3060,8 @@ def non_teaching_staff_list(request):
                     "experience") or "").strip(),
                 address=(request_serializer.validated_data.get(
                     "address") or "").strip(),
+                country=(request_serializer.validated_data.get(
+                    "country") or "").strip(),
                 state=(request_serializer.validated_data.get(
                     "state") or "").strip(),
                 city=(request_serializer.validated_data.get(
@@ -2834,15 +3211,16 @@ def non_teaching_staff_list_detail(request, staff_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    email_exists = CompanyUser.objects.filter(
-        company_id=company_user.company_id,
-        email__iexact=next_email,
-    ).exclude(id=staff_item.id).exists()
-    if email_exists:
-        return Response(
-            {"detail": "This non-teaching email already exists for your school."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    if next_email:
+        email_exists = CompanyUser.objects.filter(
+            company_id=company_user.company_id,
+            email__iexact=next_email,
+        ).exclude(id=staff_item.id).exists()
+        if email_exists:
+            return Response(
+                {"detail": "This non-teaching email already exists for your school."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     mobile_exists = CompanyUser.objects.filter(
         company_id=company_user.company_id,
@@ -2861,16 +3239,17 @@ def non_teaching_staff_list_detail(request, staff_id):
         linked_user = UserModel.objects.filter(
             email__iexact=staff_item.email).first()
 
-    email_in_use = (
-        UserModel.objects.filter(email__iexact=next_email)
-        .exclude(id=linked_user.id if linked_user else None)
-        .exists()
-    )
-    if email_in_use:
-        return Response(
-            {"detail": "This email is already registered."},
-            status=status.HTTP_400_BAD_REQUEST,
+    if next_email:
+        email_in_use = (
+            UserModel.objects.filter(email__iexact=next_email)
+            .exclude(id=linked_user.id if linked_user else None)
+            .exists()
         )
+        if email_in_use:
+            return Response(
+                {"detail": "This email is already registered."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     mobile_in_use = (
         UserModel.objects.filter(phone_number=next_mobile)
@@ -2915,6 +3294,9 @@ def non_teaching_staff_list_detail(request, staff_id):
             staff_item.address = (
                 request_serializer.validated_data.get("address") or ""
             ).strip()
+            staff_item.country = (
+                request_serializer.validated_data.get("country") or ""
+            ).strip()
             staff_item.state = (
                 request_serializer.validated_data.get("state") or ""
             ).strip()
@@ -2943,6 +3325,7 @@ def non_teaching_staff_list_detail(request, staff_id):
                     "qualification",
                     "experience",
                     "address",
+                    "country",
                     "state",
                     "city",
                     "pin",
@@ -3199,6 +3582,8 @@ def student_list(request):
                 ).strip(),
                 address=(request_serializer.validated_data.get(
                     "address") or "").strip(),
+                country=(request_serializer.validated_data.get(
+                    "country") or "").strip(),
                 state=(request_serializer.validated_data.get(
                     "state") or "").strip(),
                 city=(request_serializer.validated_data.get(
@@ -3425,6 +3810,8 @@ def student_list_detail(request, student_id):
     ).strip()
     student_item.address = (
         request_serializer.validated_data.get("address") or "").strip()
+    student_item.country = (
+        request_serializer.validated_data.get("country") or "").strip()
     student_item.state = (
         request_serializer.validated_data.get("state") or "").strip()
     student_item.city = (
@@ -3445,6 +3832,7 @@ def student_list_detail(request, student_id):
             "dob",
             "fatherOrHusband",
             "address",
+            "country",
             "state",
             "city",
             "pin",
@@ -4282,6 +4670,7 @@ def category_dashboard_summary(request):
         )
 
     company_ids = list(school_companies.values_list("id", flat=True))
+    requested_year = str(request.query_params.get("year") or "").strip()
     school_count = len(company_ids)
     teacher_count = CompanyUser.objects.filter(
         company_id__in=company_ids,
@@ -4301,6 +4690,79 @@ def category_dashboard_summary(request):
     ).count()
     student_teacher_ratio = (
         round(student_count / teacher_count, 2) if teacher_count else None
+    )
+
+    available_years = list(
+        AcademicYear.objects.filter(
+            company_id__in=company_ids,
+            delist=False,
+        )
+        .exclude(year_name__isnull=True)
+        .exclude(year_name__exact="")
+        .values_list("year_name", flat=True)
+        .distinct()
+        .order_by("-year_name")
+    )
+    available_years_map = {
+        str(year_name).strip().lower(): str(year_name).strip()
+        for year_name in available_years
+        if str(year_name).strip()
+    }
+    selected_year = "all"
+    if requested_year and requested_year.lower() != "all":
+        selected_year = available_years_map.get(
+            requested_year.lower(),
+            requested_year,
+        )
+
+    marks_queryset = StudentsMark.objects.filter(
+        company_id__in=company_ids,
+        delist=False,
+    )
+    if selected_year != "all":
+        marks_queryset = marks_queryset.filter(
+            academic_year__year_name__iexact=selected_year
+        )
+
+    marks_rows = marks_queryset.values(
+        "company_id",
+        "marks_obtained",
+        "max_marks",
+    )
+    total_percentage = 0.0
+    total_marks_entries = 0
+    school_marks_map = {}
+
+    for row in marks_rows:
+        marks_obtained = row.get("marks_obtained")
+        max_marks = row.get("max_marks")
+        if marks_obtained is None or max_marks in (None, 0):
+            continue
+        try:
+            max_marks_value = float(max_marks)
+            marks_obtained_value = float(marks_obtained)
+        except (TypeError, ValueError):
+            continue
+        if max_marks_value <= 0:
+            continue
+        percentage = (marks_obtained_value / max_marks_value) * 100
+        company_id = row.get("company_id")
+        total_percentage += percentage
+        total_marks_entries += 1
+        stat = school_marks_map.setdefault(
+            company_id,
+            {
+                "percentage_total": 0.0,
+                "count": 0,
+            },
+        )
+        stat["percentage_total"] += percentage
+        stat["count"] += 1
+
+    average_marks_percentage = (
+        round(total_percentage / total_marks_entries, 2)
+        if total_marks_entries
+        else None
     )
 
     summary_list = [
@@ -4361,8 +4823,11 @@ def category_dashboard_summary(request):
     }
 
     school_list = []
+    school_name_by_id = {}
     for index, company in enumerate(company_rows, start=1):
         info = company_info_map.get(company["id"], {})
+        school_name = info.get("company_name") or company.get("company_name") or ""
+        school_name_by_id[company["id"]] = school_name
         school_list.append(
             {
                 "id": company["id"],
@@ -4372,11 +4837,8 @@ def category_dashboard_summary(request):
                     info.get("organization_id") or company.get(
                         "organization_id")
                 ),
-                "name": info.get("company_name") or company.get("company_name") or "",
-                "company_name": (
-                    info.get("company_name") or company.get(
-                        "company_name") or ""
-                ),
+                "name": school_name,
+                "company_name": school_name,
                 "school_code": company.get("school_code") or "",
                 "school_category": company.get("school_category") or "",
                 "location": company.get("location") or "",
@@ -4396,6 +4858,26 @@ def category_dashboard_summary(request):
             }
         )
 
+    highest_marks_school_name = ""
+    highest_marks_school_average_percentage = None
+    for company_id, stat in school_marks_map.items():
+        stat_count = stat.get("count", 0)
+        if not stat_count:
+            continue
+        school_average = stat["percentage_total"] / stat_count
+        if (
+            highest_marks_school_average_percentage is None
+            or school_average > highest_marks_school_average_percentage
+        ):
+            highest_marks_school_average_percentage = school_average
+            highest_marks_school_name = school_name_by_id.get(company_id, "")
+
+    if highest_marks_school_average_percentage is not None:
+        highest_marks_school_average_percentage = round(
+            highest_marks_school_average_percentage,
+            2,
+        )
+
     return Response(
         {
             "organization_id": organization_id,
@@ -4406,6 +4888,17 @@ def category_dashboard_summary(request):
                 "students": student_count,
                 "headmasters": headmaster_count,
                 "student_teacher_ratio": student_teacher_ratio,
+                "average_marks_percentage": average_marks_percentage,
+                "highest_marks_school_name": highest_marks_school_name,
+                "highest_marks_school_average_percentage": highest_marks_school_average_percentage,
+            },
+            "marks_analytics": {
+                "selected_year": selected_year,
+                "available_years": available_years,
+                "average_marks_percentage": average_marks_percentage,
+                "highest_marks_school_name": highest_marks_school_name,
+                "highest_marks_school_average_percentage": highest_marks_school_average_percentage,
+                "marks_entries": total_marks_entries,
             },
             "graph": graph,
             "list": summary_list,

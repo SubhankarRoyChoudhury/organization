@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import AccessDeniedDialog from "@/components/ui/AccessDeniedDialog";
 import DelistConfirmDialog from "@/components/ui/DelistConfirmDialog";
 import DialogStudentFeesCollection from "@/components/ui/DialogStudentFeesCollection";
 import DialogStudentFessCollectionHistory from "@/components/ui/DialogStudentFessCollectionHistory";
@@ -299,6 +300,9 @@ export default function StudentFeesCollectionPage() {
   const [isDelisting, setIsDelisting] = useState(false);
   const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState(null);
+  const [currentUserRole, setCurrentUserRole] = useState("");
+  const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
   const [hasUserSelectedAcademicYearFilter, setHasUserSelectedAcademicYearFilter] = useState(false);
   const [filters, setFilters] = useState({
     academicYear: "",
@@ -355,8 +359,10 @@ export default function StudentFeesCollectionPage() {
         if (data?.company?.id) {
           setCompanyId(data.company.id);
         }
+        setCurrentUserRole(String(data?.role || "").trim().toLowerCase());
       } catch (_error) {
         setCompanyId(null);
+        setCurrentUserRole("");
       }
     };
     loadCompany();
@@ -419,6 +425,11 @@ export default function StudentFeesCollectionPage() {
 
   const handleEdit = async (item) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("You do not have permission to edit student fees collection.");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     if (isLockedAfterRepay(item)) {
       setErrorMessage("Previous repaid fees collection cannot be edited.");
       return;
@@ -551,6 +562,11 @@ export default function StudentFeesCollectionPage() {
 
   const handleDelist = (item) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("You do not have permission to delist student fees collection.");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(item);
     setIsDelistDialogOpen(true);
   };
@@ -575,6 +591,13 @@ export default function StudentFeesCollectionPage() {
 
   const handleConfirmDelist = async () => {
     if (!delistTarget?.id) {
+      return;
+    }
+    if (currentUserRole === "non-teaching") {
+      setIsDelistDialogOpen(false);
+      setDelistTarget(null);
+      setAccessDeniedMessage("You do not have permission to delist student fees collection.");
+      setIsAccessDeniedDialogOpen(true);
       return;
     }
 
@@ -1083,25 +1106,29 @@ export default function StudentFeesCollectionPage() {
               >
                 Review
               </button>
-              <button
-                type="button"
-                onClick={() => handleEdit(activeMenu.item)}
-                disabled={isLockedAfterRepay(activeMenu.item)}
-                className={`block w-full px-3 py-2 text-left text-sm transition ${
-                  isLockedAfterRepay(activeMenu.item)
-                    ? "cursor-not-allowed text-slate-400"
-                    : "text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelist(activeMenu.item)}
-                className="block w-full px-3 py-2 text-left text-sm text-red-600 transition hover:bg-slate-100"
-              >
-                Delist
-              </button>
+              {currentUserRole !== "non-teaching" ? (
+                <button
+                  type="button"
+                  onClick={() => handleEdit(activeMenu.item)}
+                  disabled={isLockedAfterRepay(activeMenu.item)}
+                  className={`block w-full px-3 py-2 text-left text-sm transition ${
+                    isLockedAfterRepay(activeMenu.item)
+                      ? "cursor-not-allowed text-slate-400"
+                      : "text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Edit
+                </button>
+              ) : null}
+              {currentUserRole !== "non-teaching" ? (
+                <button
+                  type="button"
+                  onClick={() => handleDelist(activeMenu.item)}
+                  className="block w-full px-3 py-2 text-left text-sm text-red-600 transition hover:bg-slate-100"
+                >
+                  Delist
+                </button>
+              ) : null}
             </div>,
             document.body,
           )
@@ -1119,6 +1146,15 @@ export default function StudentFeesCollectionPage() {
         onConfirm={handleConfirmDelist}
         itemLabel={delistTarget?.student_name || "this student fees collection record"}
         isSubmitting={isDelisting}
+      />
+
+      <AccessDeniedDialog
+        open={isAccessDeniedDialogOpen}
+        message={accessDeniedMessage || "You do not have permission for this action."}
+        onClose={() => {
+          setIsAccessDeniedDialogOpen(false);
+          setAccessDeniedMessage("");
+        }}
       />
     </main>
   );

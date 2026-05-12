@@ -169,10 +169,16 @@ export const logoutUser = async () => {
 // }
 
 export function get_Hospital_User_Login_Details(username) {
-  return getCurrentUser()
-    .then((responseData) => {
-      console.log(responseData);
-      return responseData;
+  const access_token = localStorage.getItem("access_token");
+
+  return axios
+    .post(`${BASE_URL}authentication/user_info/`, {
+      access_token,
+    })
+    .then((response) => {
+      console.log(response.data);
+
+      return response.data;
     })
     .catch((error) => {
       const status = error.response?.status;
@@ -1295,8 +1301,15 @@ export function getAllDoctors(company_id, role = "doctor") {
   const query = params.toString() ? `?${params.toString()}` : "";
   return axios
     .get(`${BASE_URL}hospital_management/doctor-list/${query}`)
-    .then((response) => {
-      return response.data;
+    .then(async (response) => {
+      const payload = response.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : payload?.response || payload?.results || [];
+      if (!Array.isArray(list)) {
+        return [];
+      }
+      return hydrateRecordsWithAttachmentImages(list);
     })
     .catch((error) => {
       console.error("Error retrieving doctors:", error.response?.data || error);
@@ -1333,7 +1346,12 @@ export function uploadImageFromAnyWhere(file, username, companyId) {
     formData.append("username", username);
   }
   if (companyId) {
+    formData.append("company_id", companyId);
     formData.append("cid", companyId);
+  }
+  const accessToken = localStorage.getItem("access_token");
+  if (accessToken) {
+    formData.append("access_token", accessToken);
   }
 
   return axios
@@ -1342,10 +1360,11 @@ export function uploadImageFromAnyWhere(file, username, companyId) {
       const data = response.data;
       const payload = data?.response;
       if (payload?.status === false) {
-        console.warn(
-          "Image upload responded with status=false:",
-          payload?.msg || payload,
+        const error = new Error(
+          payload?.msg || "Image upload failed on server.",
         );
+        error.response = { data };
+        throw error;
       }
       return data;
     })
@@ -1353,6 +1372,119 @@ export function uploadImageFromAnyWhere(file, username, companyId) {
       console.error("Error uploading image:", error.response?.data || error);
       throw error;
     });
+}
+
+export function extractAttachmentIdFromUploadResponse(uploadResponse) {
+  const candidates = [
+    uploadResponse?.response?.file?.id,
+    uploadResponse?.response?.file?.attachment_id,
+    uploadResponse?.response?.attachment_id,
+    uploadResponse?.response?.id,
+    uploadResponse?.attachment_id,
+    uploadResponse?.id,
+    uploadResponse?.file?.id,
+    uploadResponse?.file?.attachment_id,
+  ];
+
+  for (const candidate of candidates) {
+    const numericId = Number(candidate);
+    if (Number.isFinite(numericId) && numericId > 0) {
+      return numericId;
+    }
+  }
+
+  return null;
+}
+
+async function fetchAttachmentImageMap(attachmentIds = []) {
+  const normalizedIds = Array.from(
+    new Set(
+      (Array.isArray(attachmentIds) ? attachmentIds : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0),
+    ),
+  );
+
+  if (!normalizedIds.length) {
+    return new Map();
+  }
+
+  const access_token = localStorage.getItem("access_token");
+  const payload = new URLSearchParams();
+  payload.append("attachment_ids", JSON.stringify(normalizedIds));
+  if (access_token) {
+    payload.append("access_token", access_token);
+  }
+
+  try {
+    const response = await axios.post(
+      `${BASE_URL}shared_api/getAttachmentsWithIDs/`,
+      payload.toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          ...(access_token ? { Authorization: `Bearer ${access_token}` } : {}),
+        },
+      },
+    );
+    const attachments = Array.isArray(response.data?.response)
+      ? response.data.response
+      : [];
+    const imageMap = new Map();
+
+    for (const attachment of attachments) {
+      const id = Number(attachment?.id ?? attachment?.attachment_id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const imageSrc =
+        attachment?.base_64_image ||
+        attachment?.thumbnail_url ||
+        attachment?.url ||
+        "";
+      if (imageSrc) {
+        imageMap.set(id, imageSrc);
+      }
+    }
+
+    return imageMap;
+  } catch (error) {
+    console.error(
+      "Error fetching attachment previews:",
+      error.response?.data || error,
+    );
+    return new Map();
+  }
+}
+
+async function hydrateRecordsWithAttachmentImages(records = []) {
+  const list = Array.isArray(records) ? records : [];
+  if (!list.length) {
+    return list;
+  }
+
+  const imageMap = await fetchAttachmentImageMap(
+    list.map((record) => record?.attachment_id),
+  );
+  if (!imageMap.size) {
+    return list;
+  }
+
+  return list.map((record) => {
+    if (record?.image_url) {
+      return record;
+    }
+    const attachmentId = Number(record?.attachment_id);
+    if (!Number.isFinite(attachmentId) || attachmentId <= 0) {
+      return record;
+    }
+    const resolvedImage = imageMap.get(attachmentId);
+    if (!resolvedImage) {
+      return record;
+    }
+    return {
+      ...record,
+      image_url: resolvedImage,
+    };
+  });
 }
 
 export function createOpdTicketBooking(payload, company_id) {
@@ -2173,7 +2305,8 @@ export async function updateDoctor(id, payload, company_id) {
       error.response = { data };
       throw error;
     }
-    return data;
+    const hydrated = await hydrateRecordsWithAttachmentImages([data]);
+    return hydrated[0] || data;
   }
 
   const body = {
@@ -2187,7 +2320,11 @@ export async function updateDoctor(id, payload, company_id) {
     .patch(url, body, {
       headers: { "Content-Type": "application/json" },
     })
-    .then((response) => response.data)
+    .then(async (response) => {
+      const data = response.data;
+      const hydrated = await hydrateRecordsWithAttachmentImages([data]);
+      return hydrated[0] || data;
+    })
     .catch((error) => {
       console.error("Error updating doctor:", error.response?.data || error);
       throw error;
@@ -2368,7 +2505,8 @@ export async function updateAdministration(id, payload, company_id) {
       error.response = { data };
       throw error;
     }
-    return data;
+    const hydrated = await hydrateRecordsWithAttachmentImages([data]);
+    return hydrated[0] || data;
   }
 
   const body = {
@@ -2384,7 +2522,11 @@ export async function updateAdministration(id, payload, company_id) {
         "Content-Type": "application/json",
       },
     })
-    .then((response) => response.data)
+    .then(async (response) => {
+      const data = response.data;
+      const hydrated = await hydrateRecordsWithAttachmentImages([data]);
+      return hydrated[0] || data;
+    })
     .catch((error) => {
       console.error(
         "Error updating administration:",
@@ -2436,7 +2578,8 @@ export async function updateStaff(id, payload, company_id) {
       error.response = { data };
       throw error;
     }
-    return data;
+    const hydrated = await hydrateRecordsWithAttachmentImages([data]);
+    return hydrated[0] || data;
   }
 
   const body = {
@@ -2452,7 +2595,11 @@ export async function updateStaff(id, payload, company_id) {
         "Content-Type": "application/json",
       },
     })
-    .then((response) => response.data)
+    .then(async (response) => {
+      const data = response.data;
+      const hydrated = await hydrateRecordsWithAttachmentImages([data]);
+      return hydrated[0] || data;
+    })
     .catch((error) => {
       console.error("Error updating staff:", error.response?.data || error);
       throw error;
@@ -2507,9 +2654,15 @@ export function getAllAdministrations(company_id, role = "administration") {
   const query = params.toString() ? `?${params.toString()}` : "";
   return axios
     .get(`${BASE_URL}hospital_management/administration-list/${query}`)
-    .then((response) => {
-      // console.log("Active schools retrieved:", response.data);
-      return response.data; // Return the list of active schools
+    .then(async (response) => {
+      const payload = response.data;
+      const list = Array.isArray(payload)
+        ? payload
+        : payload?.response || payload?.results || [];
+      if (!Array.isArray(list)) {
+        return [];
+      }
+      return hydrateRecordsWithAttachmentImages(list);
     })
     .catch((error) => {
       console.error(

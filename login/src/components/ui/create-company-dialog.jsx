@@ -59,10 +59,30 @@ const INITIAL_FORM_STATE = {
 };
 
 const getCodePart = (value, length = 3) =>
-  String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, length);
+  (() => {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      return "";
+    }
+
+    const words = raw
+      .split(/\s+/)
+      .map((word) => word.replace(/[^a-zA-Z0-9]/g, ""))
+      .filter(Boolean);
+
+    if (words.length > 1) {
+      return words
+        .map((word) => word[0])
+        .join("")
+        .toLowerCase()
+        .slice(0, length);
+    }
+
+    return raw
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, length);
+  })();
 
 const generateSchoolCode = (companyName, location) => {
   const companyPart = getCodePart(companyName);
@@ -92,7 +112,32 @@ const getSchoolCodePartForUsername = (schoolCode) =>
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "");
 
-const generateUsername = (adminName, schoolCode) => {
+const generateCompanyUsernamePart = (companyName) => {
+  const normalized = String(companyName || "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+
+  const tokens = normalized
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ""))
+    .filter(Boolean);
+
+  if (!tokens.length) {
+    return "";
+  }
+
+  return tokens
+    .map((token) => (/^\d+$/.test(token) ? token : token[0]))
+    .join("");
+};
+
+const generateUsername = (companyName, adminName, schoolCode) => {
+  const companyPart = generateCompanyUsernamePart(companyName);
+  if (companyPart) {
+    return companyPart;
+  }
+
   const firstNamePart = getFirstNamePart(adminName);
   const schoolCodePart = getSchoolCodePartForUsername(schoolCode);
 
@@ -440,6 +485,7 @@ const CreateCompanyDialog = forwardRef(
 
         if (name === "admin_name" || name === "company_name" || name === "location") {
           nextValues.username = generateUsername(
+            nextValues.company_name,
             name === "admin_name" ? value : nextValues.admin_name,
             nextValues.school_code,
           );
@@ -486,7 +532,11 @@ const CreateCompanyDialog = forwardRef(
           return {
             ...prev,
             admin_name: loggedInAdminName,
-            username: generateUsername(loggedInAdminName, nextSchoolCode),
+            username: generateUsername(
+              prev.company_name,
+              loggedInAdminName,
+              nextSchoolCode,
+            ),
           };
         });
       } catch (_error) {
@@ -697,6 +747,7 @@ const CreateCompanyDialog = forwardRef(
             sub_group: normalizedValues.sub_group,
             school_category: normalizedValues.school_category,
             is_verified: true,
+            is_approved: false,
           });
         }
         handleClose();
@@ -713,6 +764,10 @@ const CreateCompanyDialog = forwardRef(
         ? "Hospital"
         : formValues.sub_group === "Clinic"
         ? "Clinic"
+        : formValues.sub_group === "College"
+        ? "College"
+        : formValues.sub_group === "Skill"
+        ? "Skill Dev Center"
         : "School";
     const entityLabelLower = entityLabel.toLowerCase();
     const entityPluralLower =
@@ -720,18 +775,28 @@ const CreateCompanyDialog = forwardRef(
         ? "hospitals"
         : entityLabel === "Clinic"
         ? "clinics"
+        : entityLabel === "Skill Dev Center"
+        ? "skill dev centers"
         : "schools";
 
     // School and other will be treated as company 
     const isVidyaCreate = dialogMode !== "update" && formValues.main_group === "Vidya";
     const dialogTitle = isVidyaCreate
-      ? "Create New School"
+      ? formValues.sub_group === "Skill"
+        ? "Create New Skill Dev Center"
+        : formValues.sub_group === "College"
+        ? "Create New College"
+        : "Create New School"
       : dialogMode === "update"
       ? `Update ${entityLabel}`
       : "Create Company";
 
     const dialogDescription = isVidyaCreate
-      ? "Provision a school record and administrative user for your organization."
+      ? formValues.sub_group === "Skill"
+        ? "Provision a skill dev center record and administrative user for your organization."
+        : formValues.sub_group === "College"
+        ? "Provision a college record and administrative user for your organization."
+        : "Provision a school record and administrative user for your organization."
       : dialogMode === "update"
       ? "Update the selected company profile."
       : "Provision a company record and administrative user for your organization.";
@@ -870,7 +935,7 @@ const CreateCompanyDialog = forwardRef(
 
                 <label className="flex min-w-0 flex-col gap-2 col-span-1 md:col-span-2 xl:col-span-4 text-sm font-medium text-slate-700">
                   <span className="font-semibold">
-                    Admin New User Id <span className="text-rose-600">*</span>
+                    {entityLabel} Admin New User Id <span className="text-rose-600">*</span>
                   </span>
                   <input
                     type="text"
@@ -925,7 +990,7 @@ const CreateCompanyDialog = forwardRef(
 
                 <label className="flex min-w-0 flex-col gap-2 col-span-1 xl:col-span-4 text-sm font-medium text-slate-700">
                   <span className="font-semibold">
-                    Admin Phone number&nbsp;
+                    {entityLabel} Admin Phone number&nbsp;
                      <span className="text-xs font-normal">(Optional)</span>
                   </span>
                   <input
@@ -939,7 +1004,7 @@ const CreateCompanyDialog = forwardRef(
                 </label>
                 <label className="flex min-w-0 flex-col gap-2 col-span-1 md:col-span-2 xl:col-span-4 text-sm font-medium text-slate-700">
                   <span className="font-semibold">
-                    Admin&apos;s Password{" "}
+                    School Admin&apos;s Password{" "}
                     {dialogMode !== "update" ? (
                       <span className="text-rose-600">*</span>
                     ) : (

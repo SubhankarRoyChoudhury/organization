@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 function getDefaultAcademicYearId(academicYearOptions) {
@@ -77,6 +77,10 @@ export default function DialogNewFeesCreate({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dialogRef = useRef(null);
+  const dragStateRef = useRef(null);
   const sortedAcademicYearOptions = useMemo(() => {
     return [...(Array.isArray(academicYearOptions) ? academicYearOptions : [])].sort(
       (left, right) => {
@@ -132,6 +136,15 @@ export default function DialogNewFeesCreate({
     };
   }, [open, onClose, isSubmitting]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setDragOffset({ x: 0, y: 0 });
+    setIsDragging(false);
+    dragStateRef.current = null;
+  }, [open]);
+
   if (!open || typeof document === "undefined") {
     return null;
   }
@@ -184,6 +197,79 @@ export default function DialogNewFeesCreate({
     }
   };
 
+  const handleDragStart = (event) => {
+    if (event.button !== 0 || isSubmitting) {
+      return;
+    }
+
+    const dialogElement = dialogRef.current;
+    const dragHandle = event.currentTarget;
+    if (!dialogElement || !(dragHandle instanceof HTMLElement)) {
+      return;
+    }
+
+    dragHandle.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: dragOffset.x,
+      startOffsetY: dragOffset.y,
+      startRect: dialogElement.getBoundingClientRect(),
+    };
+    setIsDragging(true);
+    event.preventDefault();
+  };
+
+  const handleDragMove = (event) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || event.pointerId !== dragState.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - dragState.startX;
+    const deltaY = event.clientY - dragState.startY;
+    const isDesktop = window.innerWidth >= 640;
+    const screenPaddingX = isDesktop ? 5 : 8;
+    const screenPaddingY = isDesktop ? 5 : 0;
+    const minLeft = screenPaddingX;
+    const minTop = screenPaddingY;
+    const maxLeft = Math.max(
+      screenPaddingX,
+      window.innerWidth - dragState.startRect.width - screenPaddingX,
+    );
+    const maxTop = Math.max(
+      screenPaddingY,
+      window.innerHeight - dragState.startRect.height - screenPaddingY,
+    );
+
+    const proposedLeft = dragState.startRect.left + deltaX;
+    const proposedTop = dragState.startRect.top + deltaY;
+    const clampedLeft = Math.min(maxLeft, Math.max(minLeft, proposedLeft));
+    const clampedTop = Math.min(maxTop, Math.max(minTop, proposedTop));
+    const nextX =
+      dragState.startOffsetX + (clampedLeft - dragState.startRect.left);
+    const nextY =
+      dragState.startOffsetY + (clampedTop - dragState.startRect.top);
+
+    setDragOffset((prev) =>
+      prev.x === nextX && prev.y === nextY ? prev : { x: nextX, y: nextY },
+    );
+  };
+
+  const stopDragging = (event) => {
+    const dragState = dragStateRef.current;
+    if (!dragState || event.pointerId !== dragState.pointerId) {
+      return;
+    }
+
+    if (event.currentTarget instanceof HTMLElement) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragStateRef.current = null;
+    setIsDragging(false);
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[180] flex items-center justify-center p-3 sm:p-4">
       <button
@@ -194,23 +280,56 @@ export default function DialogNewFeesCreate({
       />
 
       <form
+        ref={dialogRef}
         onSubmit={handleSubmit}
-        className="relative z-10 w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.35)]"
+        style={{
+          transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`,
+        }}
+        className={`relative z-10 w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.35)] will-change-transform ${
+          isDragging ? "cursor-grabbing" : ""
+        }`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
           <h2 className="text-lg font-semibold text-slate-900">
             {isEditMode ? "Update Fees" : "Add New Fees"}
           </h2>
-          <button
-            type="button"
-            onClick={isSubmitting ? undefined : onClose}
-            className="rounded-md p-1 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
-            aria-label="Close"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-drag-handle="true"
+              onPointerDown={handleDragStart}
+              onPointerMove={handleDragMove}
+              onPointerUp={stopDragging}
+              onPointerCancel={stopDragging}
+              disabled={isSubmitting}
+              aria-label="Drag dialog"
+              className="hidden h-8 w-8 touch-none cursor-grab items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <circle cx="8" cy="7" r="1.4" />
+                <circle cx="16" cy="7" r="1.4" />
+                <circle cx="8" cy="12" r="1.4" />
+                <circle cx="16" cy="12" r="1.4" />
+                <circle cx="8" cy="17" r="1.4" />
+                <circle cx="16" cy="17" r="1.4" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={isSubmitting ? undefined : onClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+              aria-label="Close"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:gap-4 sm:px-6 sm:py-5">

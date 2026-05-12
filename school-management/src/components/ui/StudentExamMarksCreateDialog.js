@@ -41,6 +41,7 @@ function buildPostSubmitFormData(formData, selectedExamSchedule = null) {
   const scheduleTotalMarks = getExamScheduleTotalMarks(selectedExamSchedule);
   return {
     ...buildPersistentFormData(formData),
+    subjectId: "",
     maxMarks: scheduleTotalMarks || String(formData?.maxMarks || "0"),
     passingMarks: "33",
     marksObtained: "0",
@@ -336,6 +337,34 @@ function formatOptionLabel(value) {
   return String(value || "").trim();
 }
 
+function getNextEnabledOptionId(options, currentId = "") {
+  const normalizedCurrentId = String(currentId || "").trim();
+  const optionList = Array.isArray(options) ? options : [];
+  if (!optionList.length) {
+    return "";
+  }
+
+  const currentIndex = optionList.findIndex(
+    (option) => String(option?.id || "").trim() === normalizedCurrentId,
+  );
+
+  if (currentIndex >= 0) {
+    for (let index = currentIndex + 1; index < optionList.length; index += 1) {
+      if (!optionList[index]?.disabled) {
+        return String(optionList[index]?.id || "").trim();
+      }
+    }
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      if (!optionList[index]?.disabled) {
+        return String(optionList[index]?.id || "").trim();
+      }
+    }
+  }
+
+  const firstEnabled = optionList.find((option) => !option?.disabled);
+  return String(firstEnabled?.id || "").trim();
+}
+
 function isStudentRecordActive(record) {
   const statusValue = String(record?.status || record?.status_display || "")
     .trim()
@@ -344,6 +373,18 @@ function isStudentRecordActive(record) {
     return statusValue === "active";
   }
   return Boolean(record?.is_active ?? record?.isActive);
+}
+
+function getStudentRecordAcademicYearId(record) {
+  return String(
+    record?.academic_year_id ||
+      record?.academicYearId ||
+      record?.academic_year?.id ||
+      record?.academicYear?.id ||
+      record?.year_id ||
+      record?.yearId ||
+      "",
+  ).trim();
 }
 
 function shouldShowGradeForExamSchedule(scheduleItem) {
@@ -389,6 +430,37 @@ function SingleSelectDropdown({
 
   const selectedOption = options.find((option) => String(option?.id) === String(value || ""));
   const selectedLabel = String(selectedOption?.label || "").trim();
+  const highlightedOptionId = useMemo(() => {
+    if (!Array.isArray(options) || options.length === 0) {
+      return "";
+    }
+
+    const selectedOptionId = String(value || "");
+    if (!selectedOptionId) {
+      return "";
+    }
+
+    const selectedIndex = options.findIndex(
+      (option) => String(option?.id || "") === selectedOptionId,
+    );
+    if (selectedIndex < 0 || !options[selectedIndex]?.disabled) {
+      return "";
+    }
+
+    for (let index = selectedIndex + 1; index < options.length; index += 1) {
+      if (!options[index]?.disabled) {
+        return String(options[index]?.id || "");
+      }
+    }
+
+    for (let index = selectedIndex - 1; index >= 0; index -= 1) {
+      if (!options[index]?.disabled) {
+        return String(options[index]?.id || "");
+      }
+    }
+
+    return "";
+  }, [options, value]);
 
   const updateMenuPosition = () => {
     const buttonElement = buttonRef.current;
@@ -562,6 +634,7 @@ function SingleSelectDropdown({
                   const optionId = String(option?.id ?? "");
                   const isActive = String(value || "") === optionId;
                   const isDisabled = Boolean(option?.disabled);
+                  const isHighlighted = !isActive && optionId === highlightedOptionId;
                   return (
                     <button
                       key={optionId}
@@ -577,6 +650,8 @@ function SingleSelectDropdown({
                           ? "cursor-not-allowed bg-slate-100 text-slate-400"
                           : isActive
                             ? "bg-sky-50 text-sky-700"
+                            : isHighlighted
+                              ? "bg-sky-50 text-sky-700"
                             : "text-slate-700"
                       }`}
                     >
@@ -946,7 +1021,10 @@ export default function StudentExamMarksCreateDialog({
   };
 
   const getExamScheduleDefaultSubjectId = (scheduleItem, currentSubjectId = "") => {
-    const availableSubjectIds = getExamScheduleSubjectIds(scheduleItem);
+    const scheduleSubjects = getExamScheduleSubjects(scheduleItem);
+    const availableSubjectIds = scheduleSubjects
+      .map((item) => String(item?.id || "").trim())
+      .filter(Boolean);
     const normalizedCurrentSubjectId = String(currentSubjectId || "").trim();
     if (
       normalizedCurrentSubjectId &&
@@ -954,6 +1032,17 @@ export default function StudentExamMarksCreateDialog({
     ) {
       return normalizedCurrentSubjectId;
     }
+
+    if (scheduleSubjects.length > 0) {
+      const sortedSubjects = [...scheduleSubjects].sort((left, right) =>
+        compareScheduleText(left?.label, right?.label),
+      );
+      const firstSubjectId = String(sortedSubjects[0]?.id || "").trim();
+      if (firstSubjectId) {
+        return firstSubjectId;
+      }
+    }
+
     return String(availableSubjectIds[0] || scheduleItem?.subject_id || "").trim();
   };
 
@@ -997,23 +1086,64 @@ export default function StudentExamMarksCreateDialog({
     if (!selectedClassId || !selectedSectionId) {
       return [];
     }
+    const selectedAcademicYearId = String(formData.academicYearId || "").trim();
     return studentRecordOptions.filter((item) => {
       const matchesClass = String(item?.class_details_id || "") === selectedClassId;
       const matchesSection = String(item?.section_details_id || "") === selectedSectionId;
+      const itemAcademicYearId = getStudentRecordAcademicYearId(item);
+      const matchesAcademicYear = selectedAcademicYearId
+        ? itemAcademicYearId === selectedAcademicYearId
+        : true;
       const isCurrentSelected =
         String(item?.id || "").trim() === String(formData.studentRecordId || "").trim();
-      return matchesClass && matchesSection && (isStudentRecordActive(item) || isCurrentSelected);
+      return (
+        matchesClass &&
+        matchesSection &&
+        matchesAcademicYear &&
+        (isStudentRecordActive(item) || isCurrentSelected)
+      );
     });
-  }, [formData.studentRecordId, selectedClassId, selectedSectionId, studentRecordOptions]);
+  }, [
+    formData.academicYearId,
+    formData.studentRecordId,
+    selectedClassId,
+    selectedSectionId,
+    studentRecordOptions,
+  ]);
+
+  const sortedStudentRecordOptions = useMemo(
+    () =>
+      [...filteredStudentRecordOptions].sort((left, right) =>
+        compareScheduleText(
+          formatOptionLabel(left?.student_name || left?.student?.name),
+          formatOptionLabel(right?.student_name || right?.student?.name),
+        ),
+      ),
+    [filteredStudentRecordOptions],
+  );
 
   const filteredExamScheduleOptions = useMemo(() => {
     const classId = String(selectedClassId || "").trim();
+    const academicYearId = String(formData.academicYearId || "").trim();
     const filteredItems = !classId
       ? examScheduleOptions
       : examScheduleOptions.filter((item) => {
-      const matchesClass = String(item?.class_details_id || "") === classId;
-      return matchesClass;
-    });
+          const matchesClass = String(item?.class_details_id || "") === classId;
+          if (!matchesClass) {
+            return false;
+          }
+          if (!academicYearId) {
+            return true;
+          }
+          const scheduleAcademicYearId = String(
+            item?.academic_year_id ||
+              item?.academicYearId ||
+              item?.exam?.academic_year_id ||
+              item?.exam?.academicYearId ||
+              "",
+          ).trim();
+          return scheduleAcademicYearId === academicYearId;
+        });
 
     return [...filteredItems].sort((left, right) => {
       const leftClassName = left?.class_name || left?.class_details?.class_name || "";
@@ -1041,7 +1171,7 @@ export default function StudentExamMarksCreateDialog({
       const rightSubjectName = right?.subject_name || right?.subject?.subject_name || "";
       return compareScheduleText(leftSubjectName, rightSubjectName);
     });
-  }, [examScheduleOptions, selectedClassId]);
+  }, [examScheduleOptions, formData.academicYearId, selectedClassId]);
 
   const selectedExamSchedule = useMemo(() => {
     if (!formData.examScheduleId) {
@@ -1070,7 +1200,15 @@ export default function StudentExamMarksCreateDialog({
             ? classFilteredSubjectOptions
             : subjectOptionList;
 
-      return baseOptions.map((option) => ({
+      return [...baseOptions]
+        .sort((left, right) =>
+          String(left?.label || "").trim().localeCompare(
+            String(right?.label || "").trim(),
+            undefined,
+            { numeric: true, sensitivity: "base" },
+          ),
+        )
+        .map((option) => ({
         ...option,
         disabled:
           Boolean(option?.disabled) ||
@@ -1109,6 +1247,43 @@ export default function StudentExamMarksCreateDialog({
         "",
     ).trim();
   }, [formData.subjectId, selectedExamSchedule, subjectOptionList]);
+
+  useEffect(() => {
+    if (!open || isEditMode) {
+      return;
+    }
+
+    const subjectOptionsForSelection = buildSubjectOptions(formData.subjectId);
+    if (!subjectOptionsForSelection.length) {
+      return;
+    }
+
+    const selectedSubjectId = String(formData.subjectId || "").trim();
+    const selectedOption = subjectOptionsForSelection.find(
+      (option) => String(option?.id || "").trim() === selectedSubjectId,
+    );
+    if (!selectedOption?.disabled) {
+      return;
+    }
+
+    const nextEnabledSubjectId = getNextEnabledOptionId(
+      subjectOptionsForSelection,
+      selectedSubjectId,
+    );
+    if (!nextEnabledSubjectId || nextEnabledSubjectId === selectedSubjectId) {
+      return;
+    }
+
+    setFormData((prev) => {
+      if (String(prev.subjectId || "").trim() === nextEnabledSubjectId) {
+        return prev;
+      }
+      return {
+        ...prev,
+        subjectId: nextEnabledSubjectId,
+      };
+    });
+  }, [buildSubjectOptions, formData.subjectId, isEditMode, open]);
 
   const resetDialog = useCallback(() => {
     setFormData(getDefaultFormData());
@@ -1579,6 +1754,16 @@ export default function StudentExamMarksCreateDialog({
       setFormData((prev) => ({
         ...prev,
         sectionDetailsId: value,
+        studentRecordId: "",
+      }));
+      return;
+    }
+
+    if (name === "academicYearId") {
+      setFormData((prev) => ({
+        ...prev,
+        academicYearId: value,
+        studentRecordId: "",
       }));
       return;
     }
@@ -2031,7 +2216,7 @@ export default function StudentExamMarksCreateDialog({
                       ? "Select class and section first"
                       : "Select student record"
                   }
-                  options={filteredStudentRecordOptions.map((item) => ({
+                  options={sortedStudentRecordOptions.map((item) => ({
                     id: String(item.id),
                     label: `${formatOptionLabel(item.student_name || item.student?.name)}${
                       item.roll_number ? ` (Roll No. ${item.roll_number})` : ""

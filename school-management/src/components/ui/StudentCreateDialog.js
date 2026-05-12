@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import DatePickerField from "@/components/ui/DatePickerField";
 import {
+  extractAttachmentIdFromUploadResponse,
   getAttachmentsWithIDs,
   getAllActiveCompanyUser,
+  getAllCountries,
+  getAllStates,
   getCurrentSchoolInfo,
   getStudentListById,
   sendOrganizationEmailOtp,
@@ -91,6 +95,7 @@ function getDefaultFormData() {
     dob: "",
     guardianName: "",
     address: "",
+    country: "India",
     state: "",
     city: "",
     pin: "",
@@ -110,6 +115,7 @@ function buildFormDataFromStudent(student) {
     dob: dobDateOnly,
     guardianName: String(student?.guardian_name || ""),
     address: String(student?.address || ""),
+    country: String(student?.country || ""),
     state: String(student?.state || ""),
     city: String(student?.city || ""),
     pin: String(student?.pin || ""),
@@ -186,6 +192,11 @@ export default function StudentCreateDialog({
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [countries, setCountries] = useState([]);
+  const [states, setStates] = useState([]);
+  const [selectedCountryCode, setSelectedCountryCode] = useState("");
+  const [isLoadingCountries, setIsLoadingCountries] = useState(false);
+  const [isLoadingStates, setIsLoadingStates] = useState(false);
   const dialogRef = useRef(null);
   const nameInputRef = useRef(null);
   const dragStateRef = useRef(null);
@@ -222,6 +233,100 @@ export default function StudentCreateDialog({
     resetDialog();
     onClose();
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCountries = async () => {
+      try {
+        setIsLoadingCountries(true);
+        const response = await getAllCountries();
+        if (cancelled) {
+          return;
+        }
+        const countryList = response?.response || [];
+        setCountries(Array.isArray(countryList) ? countryList : []);
+      } catch (_error) {
+        if (cancelled) {
+          return;
+        }
+        setCountries([]);
+      } finally {
+        if (cancelled) {
+          return;
+        }
+        setIsLoadingCountries(false);
+      }
+    };
+
+    loadCountries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!countries.length) {
+      return;
+    }
+
+    if (!formData.country) {
+      setSelectedCountryCode("");
+      setStates([]);
+      return;
+    }
+
+    const matchedCountry = countries.find(
+      (country) =>
+        String(country?.name || "").toLowerCase() ===
+        String(formData.country || "").toLowerCase(),
+    );
+    const nextCountryCode = String(matchedCountry?.alpha_2 || "");
+    if (nextCountryCode !== selectedCountryCode) {
+      setSelectedCountryCode(nextCountryCode);
+    }
+  }, [countries, formData.country, selectedCountryCode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStates = async () => {
+      if (!selectedCountryCode) {
+        setStates([]);
+        return;
+      }
+
+      try {
+        setIsLoadingStates(true);
+        setStates([]);
+        const response = await getAllStates(selectedCountryCode);
+        if (cancelled) {
+          return;
+        }
+        const stateList = response?.response || [];
+        const stateNames = Array.isArray(stateList)
+          ? stateList.map((state) => state?.name).filter(Boolean)
+          : [];
+        setStates(stateNames);
+      } catch (_error) {
+        if (cancelled) {
+          return;
+        }
+        setStates([]);
+      } finally {
+        if (cancelled) {
+          return;
+        }
+        setIsLoadingStates(false);
+      }
+    };
+
+    loadStates();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCountryCode]);
 
   useEffect(() => {
     if (!open) {
@@ -425,6 +530,25 @@ export default function StudentCreateDialog({
     }));
   };
 
+  const handleCountryChange = (event) => {
+    const value = String(event?.target?.value || "");
+    const matchedCountry = countries.find((country) => country?.name === value);
+    setSelectedCountryCode(String(matchedCountry?.alpha_2 || ""));
+    setFormData((prev) => ({
+      ...prev,
+      country: value,
+      state: "",
+    }));
+  };
+
+  const handleStateChange = (event) => {
+    const value = String(event?.target?.value || "");
+    setFormData((prev) => ({
+      ...prev,
+      state: value,
+    }));
+  };
+
   const handleProfileImageChange = async (event) => {
     if (isReviewMode) {
       event.target.value = "";
@@ -467,10 +591,7 @@ export default function StudentCreateDialog({
         usernameValue,
         companyIdValue,
       );
-      const attachmentId =
-        uploadResponse?.response?.attachment_id ||
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+      const attachmentId = extractAttachmentIdFromUploadResponse(uploadResponse);
 
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
@@ -600,6 +721,7 @@ export default function StudentCreateDialog({
         dob: String(formData.dob || "").trim() || null,
         guardianName: formData.guardianName.trim(),
         address: formData.address.trim(),
+        country: formData.country.trim(),
         state: formData.state.trim(),
         city: formData.city.trim(),
         pin: formData.pin.trim(),
@@ -711,10 +833,6 @@ export default function StudentCreateDialog({
     };
   }, []);
 
-  if (!open) {
-    return null;
-  }
-
   const editBaseline = isEditMode && initialData
     ? buildFormDataFromStudent(initialData)
     : null;
@@ -725,28 +843,41 @@ export default function StudentCreateDialog({
   const normalizedUsername = normalizeUsername(formData.username);
   const initialUsername = normalizeUsername(initialData?.username || "");
   const shouldCheckUsernameAvailability = mode === "create";
-  const takenUsernames = useMemo(
-    () =>
-      companyUsers
-        .map((user) => normalizeUsername(user?.username))
-        .filter(Boolean)
-        .filter((username) => !(isEditMode && username === initialUsername)),
-    [companyUsers, initialUsername, isEditMode],
-  );
+  const { takenUsernames, usernameSuggestions } = useMemo(() => {
+    const mergedTakenUsernames = companyUsers
+      .map((user) => normalizeUsername(user?.username))
+      .filter(Boolean)
+      .filter((username) => !(isEditMode && username === initialUsername));
+
+    const shouldSuggest =
+      shouldCheckUsernameAvailability &&
+      Boolean(normalizedUsername) &&
+      mergedTakenUsernames.includes(normalizedUsername);
+
+    return {
+      takenUsernames: mergedTakenUsernames,
+      usernameSuggestions: shouldSuggest
+        ? buildAvailableUsernameSuggestions(normalizedUsername, mergedTakenUsernames, 5)
+        : [],
+    };
+  }, [
+    companyUsers,
+    initialUsername,
+    isEditMode,
+    shouldCheckUsernameAvailability,
+    normalizedUsername,
+  ]);
   const isUsernameTaken =
     shouldCheckUsernameAvailability &&
     Boolean(normalizedUsername) &&
     takenUsernames.includes(normalizedUsername);
-  const usernameSuggestions = useMemo(
-    () =>
-      isUsernameTaken
-        ? buildAvailableUsernameSuggestions(normalizedUsername, takenUsernames, 5)
-        : [],
-    [isUsernameTaken, normalizedUsername, takenUsernames],
-  );
   const emailNeedsVerification = Boolean(normalizedEmail);
   const isEmailVerified =
     !emailNeedsVerification || verifiedEmail === normalizedEmail;
+
+  if (!open) {
+    return null;
+  }
 
   const dialogContent = (
     <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-hidden p-2 sm:p-6">
@@ -988,15 +1119,16 @@ export default function StudentCreateDialog({
                 <span className="font-bold">
                   Date of Birth <span className="text-rose-600">*</span>
                 </span>
-                <input
-                  type="date"
-                  name="dob"
+                <DatePickerField
                   value={formData.dob}
-                  onChange={handleChange}
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "dob", value },
+                    })
+                  }
                   readOnly={isReviewMode}
                   disabled={isReviewMode}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                  required
+                  ariaLabel="Student Date of Birth"
                 />
               </label>
 
@@ -1032,17 +1164,48 @@ export default function StudentCreateDialog({
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
                 <span className="font-bold">
+                  Country <span className="text-rose-600">*</span>
+                </span>
+                <select
+                  name="country"
+                  value={formData.country}
+                  onChange={handleCountryChange}
+                  disabled={isReviewMode || isLoadingCountries}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  required
+                >
+                  <option value="">
+                    {isLoadingCountries ? "Loading countries..." : "Select country"}
+                  </option>
+                  {countries.map((country) => (
+                    <option key={country.alpha_2} value={country.name}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+                <span className="font-bold">
                   State <span className="text-rose-600">*</span>
                 </span>
-                <input
+                <select
                   name="state"
                   value={formData.state}
-                  onChange={handleChange}
-                  readOnly={isReviewMode}
-                  disabled={isReviewMode}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  onChange={handleStateChange}
+                  disabled={isReviewMode || !formData.country || isLoadingStates}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:bg-slate-100"
                   required
-                />
+                >
+                  <option value="">
+                    {isLoadingStates ? "Loading states..." : "Select state"}
+                  </option>
+                  {states.map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">

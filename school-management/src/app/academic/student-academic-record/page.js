@@ -750,7 +750,7 @@ function StudentAcademicRecordPageContent() {
     if (normalizedStatus === "promoted") {
       return;
     }
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
       setAccessDeniedMessage("Teacher cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
@@ -769,6 +769,11 @@ function StudentAcademicRecordPageContent() {
 
   const handleDelist = (recordItem) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot delist");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(recordItem);
     setIsDelistDialogOpen(true);
   };

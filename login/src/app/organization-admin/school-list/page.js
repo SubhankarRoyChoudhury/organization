@@ -2,18 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getOrganizationSchools } from "@/app/api/apiService";
+import { getCompanyInfo, getOrganizationSchools } from "@/app/api/apiService";
+import { formatDateValue } from "@/lib/companyLocale";
 
-const formatDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-  try {
-    return new Date(value).toISOString().split("T")[0];
-  } catch (err) {
-    return "-";
-  }
-};
+const formatDate = (value) => formatDateValue(value, { fallback: "-" });
 
 export default function OrganizationAdminSchoolListPage() {
   const router = useRouter();
@@ -26,7 +18,16 @@ export default function OrganizationAdminSchoolListPage() {
     try {
       setLoading(true);
       setError("");
-      const response = await getOrganizationSchools();
+      const organizationId =
+        (typeof window !== "undefined" &&
+          (localStorage.getItem("organization_id") ||
+            localStorage.getItem("company_id"))) ||
+        "";
+      const localePromise = organizationId
+        ? getCompanyInfo(organizationId).catch(() => null)
+        : Promise.resolve(null);
+      const schoolsPromise = getOrganizationSchools();
+      const [response] = await Promise.all([schoolsPromise, localePromise]);
       setSchools(Array.isArray(response?.schools) ? response.schools : []);
       setTotal(
         typeof response?.total === "number"

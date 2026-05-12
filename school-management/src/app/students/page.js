@@ -159,6 +159,7 @@ export default function StudentsPage() {
   const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const [isSearchVisibleSmallScreen, setIsSearchVisibleSmallScreen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [companyId, setCompanyId] = useState(null);
@@ -368,6 +369,7 @@ export default function StudentsPage() {
       dob: studentData.dob,
       guardian_name: studentData.guardianName || "",
       address: studentData.address || "",
+      country: studentData.country || "",
       state: studentData.state || "",
       city: studentData.city || "",
       pin: studentData.pin || "",
@@ -484,6 +486,9 @@ export default function StudentsPage() {
       }
     }
 
+    await fetchStudents();
+    await fetchAcademicFlowOptions();
+
     setIsFeesDialogOpen(false);
     setFeesDialogInitialData(null);
     setRecentCreatedAcademicRecord(null);
@@ -497,7 +502,7 @@ export default function StudentsPage() {
 
   const handleEdit = (studentItem) => {
     setActiveMenu(null);
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
       setAccessDeniedMessage("Teacher cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
@@ -516,6 +521,11 @@ export default function StudentsPage() {
 
   const handleDelist = (studentItem) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot delist");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(studentItem);
     setIsDelistDialogOpen(true);
   };
@@ -620,6 +630,27 @@ export default function StudentsPage() {
               />
               <button
                 type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-white/80 bg-white p-2.5 text-sky-700 shadow-sm transition hover:bg-sky-50"
+                aria-label="Watch student setup video"
+                title="Watch student setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
                 onClick={handleOpenCreate}
                 className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
               >
@@ -650,6 +681,27 @@ export default function StudentsPage() {
                   <path d="M21 21l-4.35-4.35" />
                 </svg>
                 
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white text-sky-700 shadow-sm transition hover:bg-sky-50"
+                aria-label="Watch student setup video"
+                title="Watch student setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
               </button>
               <button
                 type="button"
@@ -902,6 +954,48 @@ export default function StudentsPage() {
           </section>
         </div>
       </div>
+
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Student List Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-[18px] w-[18px]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube-nocookie.com/embed/VFbvjbN4dyc?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                title="Student setup tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
 
       <StudentCreateDialog

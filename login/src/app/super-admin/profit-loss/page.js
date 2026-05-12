@@ -6,6 +6,7 @@ import {
   clearLoginSession,
   getCompaniesProfitLossSummary,
 } from "@/app/api/apiService";
+import { formatCurrencyValue } from "@/lib/companyLocale";
 import {
   Dialog,
   DialogContent,
@@ -24,14 +25,10 @@ const getDefaultRange = () => {
   };
 };
 
-const formatCurrency = (value) => {
-  const amount = Number(value || 0);
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
+const formatCurrency = (value) =>
+  formatCurrencyValue(value, {
     maximumFractionDigits: 2,
-  }).format(amount);
-};
+  });
 
 export default function SuperAdminProfitLossPage() {
   const router = useRouter();

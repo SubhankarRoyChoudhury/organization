@@ -115,7 +115,9 @@ export default function ExamSchedulePage() {
   const [sectionOptions, setSectionOptions] = useState([]);
   const [subjectOptions, setSubjectOptions] = useState([]);
   const [academicYears, setAcademicYears] = useState([]);
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState("");
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create");
   const [selectedExamSchedule, setSelectedExamSchedule] = useState(null);
   const [activeMenu, setActiveMenu] = useState(null);
@@ -135,6 +137,27 @@ export default function ExamSchedulePage() {
     examTypeOptions.forEach((item) => entries.set(String(item.id), item));
     return entries;
   }, [examTypeOptions]);
+
+  const academicYearFilterOptions = useMemo(
+    () =>
+      [...(Array.isArray(academicYears) ? academicYears : [])]
+        .map((item) => ({
+          id: String(item?.id || "").trim(),
+          label: String(item?.year_name || item?.yearName || "").trim(),
+        }))
+        .filter((item) => item.id && item.label)
+        .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true })),
+    [academicYears],
+  );
+
+  const filteredExamSchedules = useMemo(() => {
+    if (!selectedAcademicYearId) {
+      return examSchedules;
+    }
+    return examSchedules.filter(
+      (item) => String(item?.academic_year_id || "").trim() === selectedAcademicYearId,
+    );
+  }, [examSchedules, selectedAcademicYearId]);
 
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -176,6 +199,7 @@ export default function ExamSchedulePage() {
   const buildExamScheduleRequestPayload = useCallback(
     (payload) => ({
       company_id: payload.companyId || companyId || undefined,
+      academic_year_id: Number(payload.academicYearId) || undefined,
       exam_id: Number(payload.examId) || undefined,
       class_details_id: Number(payload.classDetailsId) || undefined,
       section_details_id: Number(payload.sectionDetailsId) || undefined,
@@ -261,7 +285,7 @@ export default function ExamSchedulePage() {
 
   const handleEdit = useCallback((examScheduleItem) => {
     setActiveMenu(null);
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
       setAccessDeniedMessage("Teacher cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
@@ -273,9 +297,14 @@ export default function ExamSchedulePage() {
 
   const handleDelist = useCallback((examScheduleItem) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot delist");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(examScheduleItem);
     setIsDelistDialogOpen(true);
-  }, []);
+  }, [currentUserRole]);
 
   const handleConfirmDelist = useCallback(async () => {
     if (!delistTarget || isDelisting) {
@@ -352,17 +381,56 @@ export default function ExamSchedulePage() {
             <h1 className="text-[14px] font-semibold tracking-wide sm:text-[18px]">
               Exam Schedule
             </h1>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedExamSchedule(null);
-                setDialogMode("create");
-                setIsScheduleDialogOpen(true);
-              }}
-              className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
-            >
-              Add Exam Schedule
-            </button>
+            <div className="flex items-center gap-3">
+              <label className="sr-only" htmlFor="exam-schedule-academic-year-filter">
+                Academic Year
+              </label>
+              <select
+                id="exam-schedule-academic-year-filter"
+                value={selectedAcademicYearId}
+                onChange={(event) => setSelectedAcademicYearId(event.target.value)}
+                className="h-10 min-w-[164px] rounded-lg border border-white/80 bg-white px-3 text-sm font-medium text-sky-700 outline-none transition focus:border-white focus:ring-2 focus:ring-white/50"
+              >
+                <option value="">All academic years</option>
+                {academicYearFilterOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-white/80 bg-white p-2.5 text-sky-700 shadow-sm transition hover:bg-sky-50"
+                aria-label="Watch exam schedule setup video"
+                title="Watch exam schedule setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedExamSchedule(null);
+                  setDialogMode("create");
+                  setIsScheduleDialogOpen(true);
+                }}
+                className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
+              >
+                Add Exam Schedule
+              </button>
+            </div>
           </div>
         </section>
 
@@ -373,6 +441,9 @@ export default function ExamSchedulePage() {
                 <tr className="text-center text-xs uppercase tracking-wide text-slate-500">
                   <th className="sticky top-0 z-20 w-[60px] border-b border-slate-200 bg-slate-50 px-2 py-3 font-semibold shadow-[0_1px_0_rgba(148,163,184,0.35)] first:rounded-l-xl">
                     SL.No.
+                  </th>
+                  <th className="sticky top-0 z-20 w-[140px] whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 font-semibold shadow-[0_1px_0_rgba(148,163,184,0.35)]">
+                    Academic Year
                   </th>
                   <th className="sticky top-0 z-20 w-[150px] whitespace-nowrap border-b border-slate-200 bg-slate-50 px-2 py-3 font-semibold shadow-[0_1px_0_rgba(148,163,184,0.35)]">
                     Exam Name
@@ -400,7 +471,7 @@ export default function ExamSchedulePage() {
               <tbody>
                 {isLoading ? (
                   <tr className="border-b border-slate-100 text-sm text-slate-700">
-                    <td className="px-2 py-3" colSpan={8}>
+                    <td className="px-2 py-3" colSpan={9}>
                       Loading...
                     </td>
                   </tr>
@@ -408,21 +479,21 @@ export default function ExamSchedulePage() {
 
                 {!isLoading && errorMessage ? (
                   <tr className="border-b border-slate-100 text-sm text-red-600">
-                    <td className="px-2 py-3" colSpan={8}>
+                    <td className="px-2 py-3" colSpan={9}>
                       {errorMessage}
                     </td>
                   </tr>
                 ) : null}
 
-                {!isLoading && !errorMessage && examSchedules.length === 0 ? (
+                {!isLoading && !errorMessage && filteredExamSchedules.length === 0 ? (
                   <tr className="border-b border-slate-100 text-sm text-slate-700">
-                    <td className="px-2 py-3" colSpan={8}>
+                    <td className="px-2 py-3" colSpan={9}>
                       No exam schedule records found.
                     </td>
                   </tr>
                 ) : null}
 
-                {examSchedules.map((item, index) => {
+                {filteredExamSchedules.map((item, index) => {
                   const examName =
                     item.exam_name ||
                     examTypeById.get(String(item.exam_id))?.exam_name ||
@@ -437,6 +508,9 @@ export default function ExamSchedulePage() {
                         <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
                           {index + 1}
                         </span>
+                      </td>
+                      <td className="px-2 py-4 align-center">
+                        {item.academic_year_name || "-"}
                       </td>
                       <td className="px-2 py-4 align-center">
                         <div className="whitespace-nowrap font-semibold text-slate-900">
@@ -489,6 +563,48 @@ export default function ExamSchedulePage() {
         </section>
       </div>
 
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Exam Schedule Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-[18px] w-[18px]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube-nocookie.com/embed/qQiSNcuHAYM?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                title="Exam schedule setup tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <ExamScheduleCreateDialog
         key={`${dialogMode}-${selectedExamSchedule?.id || "new"}-${isScheduleDialogOpen ? "open" : "closed"}`}
         open={isScheduleDialogOpen}
@@ -505,6 +621,7 @@ export default function ExamSchedulePage() {
         sectionOptions={sectionOptions}
         subjectOptions={subjectOptions}
         academicYears={academicYears}
+        preselectedAcademicYearId={selectedAcademicYearId}
         initialData={selectedExamSchedule}
         mode={dialogMode}
       />

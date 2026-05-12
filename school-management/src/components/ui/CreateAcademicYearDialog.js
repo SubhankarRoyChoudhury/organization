@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getCurrentSchoolInfo } from "@/lib/apiService";
+import DatePickerField from "@/components/ui/DatePickerField";
 
 function getDefaultFormData() {
   const now = new Date();
@@ -649,24 +650,28 @@ export default function CreateAcademicYearDialog({
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
                 Start Date
-                <input
-                  type="date"
-                  name="startDate"
+                <DatePickerField
                   value={formData.startDate}
-                  onChange={handleChange}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "startDate", value },
+                    })
+                  }
+                  ariaLabel="Academic Year Start Date"
                 />
               </label>
 
               <label className="flex flex-col gap-1.5 text-sm font-medium text-slate-700">
                 End Date
-                <input
-                  type="date"
-                  name="endDate"
+                <DatePickerField
                   value={formData.endDate}
-                  min={formData.startDate || undefined}
-                  onChange={handleChange}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  min={formData.startDate || ""}
+                  onChange={(value) =>
+                    handleChange({
+                      target: { name: "endDate", value },
+                    })
+                  }
+                  ariaLabel="Academic Year End Date"
                 />
               </label>
 

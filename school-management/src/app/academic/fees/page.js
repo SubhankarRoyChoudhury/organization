@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import AccessDeniedDialog from "@/components/ui/AccessDeniedDialog";
 import DelistConfirmDialog from "@/components/ui/DelistConfirmDialog";
 import DialogNewFeesCreate from "@/components/ui/DialogNewFeesCreate";
 import {
@@ -38,6 +39,9 @@ export default function FeesPage() {
   const [isDelistDialogOpen, setIsDelistDialogOpen] = useState(false);
   const [delistTarget, setDelistTarget] = useState(null);
   const [isDelisting, setIsDelisting] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState("");
+  const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   const fetchFees = useCallback(async () => {
     setIsLoading(true);
@@ -82,8 +86,10 @@ export default function FeesPage() {
         if (data?.company?.id) {
           setCompanyId(data.company.id);
         }
+        setCurrentUserRole(String(data?.role || "").trim().toLowerCase());
       } catch (_error) {
         setCompanyId(null);
+        setCurrentUserRole("");
       }
     };
     loadCompany();
@@ -146,6 +152,11 @@ export default function FeesPage() {
 
   const handleEdit = async (item) => {
     setActiveMenu(null);
+    if (currentUserRole === "teacher" || currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("You do not have permission to edit fees records.");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDialogMode("edit");
     setSelectedFeeId(item?.id || null);
     setSelectedFeeData(null);
@@ -168,6 +179,11 @@ export default function FeesPage() {
 
   const handleDelist = (item) => {
     setActiveMenu(null);
+    if (currentUserRole === "teacher" || currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("You do not have permission to delist fees records.");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(item);
     setIsDelistDialogOpen(true);
   };
@@ -424,6 +440,15 @@ export default function FeesPage() {
             : "this fees record"
         }
         isSubmitting={isDelisting}
+      />
+
+      <AccessDeniedDialog
+        open={isAccessDeniedDialogOpen}
+        message={accessDeniedMessage || "You do not have permission to perform this action."}
+        onClose={() => {
+          setIsAccessDeniedDialogOpen(false);
+          setAccessDeniedMessage("");
+        }}
       />
     </main>
   );

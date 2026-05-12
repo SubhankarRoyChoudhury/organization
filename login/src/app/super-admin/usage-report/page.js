@@ -10,22 +10,10 @@ import {
   getOrganizationTotalUsage,
   getOrganizations,
 } from "@/app/api/apiService";
+import { formatDateTimeValue, formatNumberValue } from "@/lib/companyLocale";
 
 const formatDateTime = (value) => {
-  if (!value) {
-    return "-";
-  }
-  try {
-    return new Date(value).toLocaleString("en-IN", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch (err) {
-    return String(value);
-  }
+  return formatDateTimeValue(value, { fallback: "-" });
 };
 
 const formatDuration = (value) => {
@@ -57,14 +45,11 @@ const formatDuration = (value) => {
 };
 
 const formatNumber = (value, digits = 2) => {
-  const numberValue = Number(value || 0);
-  if (Number.isNaN(numberValue)) {
-    return "-";
-  }
-  return new Intl.NumberFormat("en-IN", {
+  return formatNumberValue(value, {
+    fallback: "-",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(numberValue);
+  });
 };
 
 export default function SuperAdminUsageReportPage() {

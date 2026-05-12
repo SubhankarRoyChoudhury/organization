@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   Hospital,
@@ -64,6 +64,7 @@ import {
   createCompanyAccount,
   getCategoryDashboardSummary,
   getOrganizationHospitals,
+  extractAttachmentIdFromUploadResponse,
 } from "@/app/api/apiService";
 import {
   Dialog,
@@ -691,6 +692,8 @@ export default function Category() {
   const [isLoadingCountries, setIsLoadingCountries] = useState(false);
   const [isLoadingStates, setIsLoadingStates] = useState(false);
   const [activeSection, setActiveSection] = useState("hospital");
+  const [isCompanyProfileVideoModalOpen, setIsCompanyProfileVideoModalOpen] =
+    useState(false);
   const [owners, setOwners] = useState([]);
   const [editedOwners, setEditedOwners] = useState([]);
   const [editingOwnerId, setEditingOwnerId] = useState(null);
@@ -924,6 +927,13 @@ export default function Category() {
 
   const [availableModules, setAvailableModules] = useState(baseModules);
   const [selectedWorkspacePanel, setSelectedWorkspacePanel] = useState("Vidya");
+  const currentMarksYear = useMemo(() => {
+    const now = new Date();
+    const startYear = now.getFullYear();
+    return `${startYear}-${startYear + 1}`;
+  }, []);
+  const [selectedMarksYear, setSelectedMarksYear] = useState(currentMarksYear);
+  const [marksYearOptions, setMarksYearOptions] = useState([]);
   const [isWorkspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
   const [isCategoryDashboardLoading, setCategoryDashboardLoading] = useState(false);
   const [categoryDashboardSummary, setCategoryDashboardSummary] = useState({
@@ -936,6 +946,9 @@ export default function Category() {
     administration: 0,
     staff: 0,
     approved: 0,
+    average_marks_percentage: null,
+    highest_marks_school_name: "",
+    highest_marks_school_average_percentage: null,
   });
   const [categoryDashboardGraph, setCategoryDashboardGraph] = useState([]);
   const [categoryDashboardSchools, setCategoryDashboardSchools] = useState([]);
@@ -951,6 +964,9 @@ export default function Category() {
     administration: 0,
     staff: 0,
     approved: 0,
+    average_marks_percentage: null,
+    highest_marks_school_name: "",
+    highest_marks_school_average_percentage: null,
   };
 
   const showToast = (message) => {
@@ -966,7 +982,10 @@ export default function Category() {
     }, 2200);
   };
 
-  const loadCategoryDashboardSummary = async (panel = "Vidya") => {
+  const loadCategoryDashboardSummary = async (
+    panel = "Vidya",
+    marksYearFilter = "all",
+  ) => {
     setCategoryDashboardLoading(true);
     try {
       if (panel === "Swasthya") {
@@ -994,6 +1013,7 @@ export default function Category() {
           { label: "Approved", value: swasthyaSummary.approved },
         ]);
         setCategoryDashboardSchools(hospitals);
+        setMarksYearOptions([]);
         setCategoryDashboardList([
           { key: "schools", label: "Hospitals", value: swasthyaSummary.schools },
           { key: "doctors", label: "Doctors", value: swasthyaSummary.doctors },
@@ -1013,7 +1033,32 @@ export default function Category() {
       }
 
       if (panel === "Vidya") {
-        const response = await getCategoryDashboardSummary();
+        const response = await getCategoryDashboardSummary(
+          marksYearFilter && marksYearFilter !== "all"
+            ? { year: marksYearFilter }
+            : {},
+        );
+        const marksAnalytics = response?.marks_analytics || {};
+        const nextMarksYearOptions = Array.isArray(marksAnalytics?.available_years)
+          ? marksAnalytics.available_years.filter(Boolean)
+          : [];
+        setMarksYearOptions(nextMarksYearOptions);
+        if (
+          marksYearFilter !== "all" &&
+          nextMarksYearOptions.length &&
+          !nextMarksYearOptions.some(
+            (year) =>
+              String(year).trim().toLowerCase() ===
+              String(marksYearFilter).trim().toLowerCase(),
+          )
+        ) {
+          const hasCurrentMarksYear = nextMarksYearOptions.some(
+            (year) =>
+              String(year).trim().toLowerCase() ===
+              String(currentMarksYear).trim().toLowerCase(),
+          );
+          setSelectedMarksYear(hasCurrentMarksYear ? currentMarksYear : "all");
+        }
         setCategoryDashboardSummary(response?.summary || emptyCategorySummary);
         setCategoryDashboardGraph(Array.isArray(response?.graph) ? response.graph : []);
         setCategoryDashboardSchools(Array.isArray(response?.schools) ? response.schools : []);
@@ -1025,11 +1070,13 @@ export default function Category() {
       setCategoryDashboardGraph([]);
       setCategoryDashboardSchools([]);
       setCategoryDashboardList([]);
+      setMarksYearOptions([]);
     } catch (_error) {
       setCategoryDashboardSummary(emptyCategorySummary);
       setCategoryDashboardGraph([]);
       setCategoryDashboardSchools([]);
       setCategoryDashboardList([]);
+      setMarksYearOptions([]);
       showToast(`Unable to load ${panel} dashboard summary.`);
     } finally {
       setCategoryDashboardLoading(false);
@@ -1043,7 +1090,13 @@ export default function Category() {
       showToast(`${label} will introduce later`);
       return;
     }
-    loadCategoryDashboardSummary(label);
+    if (label !== "Vidya" && selectedMarksYear !== "all") {
+      setSelectedMarksYear("all");
+    }
+    loadCategoryDashboardSummary(
+      label,
+      label === "Vidya" ? selectedMarksYear : "all",
+    );
   };
 
   useEffect(() => {
@@ -2211,11 +2264,14 @@ export default function Category() {
     }
 
     const run = async () => {
-      await loadCategoryDashboardSummary(selectedWorkspacePanel);
+      await loadCategoryDashboardSummary(
+        selectedWorkspacePanel,
+        selectedWorkspacePanel === "Vidya" ? selectedMarksYear : "all",
+      );
     };
 
     run();
-  }, [isPageLoading, selectedWorkspacePanel]);
+  }, [isPageLoading, selectedWorkspacePanel, selectedMarksYear]);
 
   const resetOrganizationCreateForm = () => {
     setOrganizationCreateForm({
@@ -3158,8 +3214,7 @@ export default function Category() {
           companyId,
         );
         const attachmentId =
-          uploadResponse?.response?.file?.id ||
-          uploadResponse?.response?.file?.attachment_id;
+          extractAttachmentIdFromUploadResponse(uploadResponse);
         if (!attachmentId) {
           throw new Error("Attachment ID missing");
         }
@@ -3181,8 +3236,7 @@ export default function Category() {
           companyId,
         );
         const attachmentId =
-          uploadResponse?.response?.file?.id ||
-          uploadResponse?.response?.file?.attachment_id;
+          extractAttachmentIdFromUploadResponse(uploadResponse);
         if (!attachmentId) {
           throw new Error("Attachment ID missing");
         }
@@ -3209,8 +3263,7 @@ export default function Category() {
           companyId,
         );
         const attachmentId =
-          uploadResponse?.response?.file?.id ||
-          uploadResponse?.response?.file?.attachment_id;
+          extractAttachmentIdFromUploadResponse(uploadResponse);
         if (!attachmentId) {
           throw new Error("Attachment ID missing");
         }
@@ -4142,6 +4195,25 @@ export default function Category() {
     categoryDashboardSummary.student_teacher_ratio ??
     summaryCardsByKey.student_teacher_ratio;
   const ratioDisplay = ratioValue === null || ratioValue === undefined ? "—" : `${ratioValue}:1`;
+  const averageMarksPercentage =
+    categoryDashboardSummary.average_marks_percentage ?? null;
+  const highestMarksSchoolName =
+    categoryDashboardSummary.highest_marks_school_name || "";
+  const highestMarksSchoolAveragePercentage =
+    categoryDashboardSummary.highest_marks_school_average_percentage ?? null;
+  const averageMarksDisplay =
+    averageMarksPercentage === null || averageMarksPercentage === undefined
+      ? "—"
+      : `${averageMarksPercentage}%`;
+  const highestMarksSchoolAverageDisplay =
+    highestMarksSchoolAveragePercentage === null ||
+    highestMarksSchoolAveragePercentage === undefined
+      ? "—"
+      : `${highestMarksSchoolAveragePercentage}%`;
+  const selectedMarksYearLabel =
+    selectedMarksYear && selectedMarksYear !== "all"
+      ? selectedMarksYear
+      : "All years";
   const isSwasthyaWorkspace = selectedWorkspacePanel === "Swasthya";
   const primaryEntityLabel = isSwasthyaWorkspace ? "Hospitals" : "Schools";
   const primaryEntityLabelSingular = isSwasthyaWorkspace ? "Hospital" : "School";
@@ -4615,7 +4687,7 @@ export default function Category() {
           <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.24),rgba(255,255,255,0.08))]" />
 
           <div className="relative grid gap-5 xl:grid-cols-[1.05fr_1.45fr]">
-            <div className="rounded-[30px] border border-white/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(239,247,255,0.22))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_24px_60px_-36px_rgba(15,23,42,0.22)] backdrop-blur-2xl">
+            <div className="relative z-[120] rounded-[30px] border border-white/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(239,247,255,0.22))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_24px_60px_-36px_rgba(15,23,42,0.22)] backdrop-blur-2xl">
               <p className="text-lg font-medium text-slate-700">{selectedWorkspacePanel} organization summary</p>
               <div className="mt-3 flex items-end gap-2">
                 <h2 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
@@ -4634,7 +4706,29 @@ export default function Category() {
                 >
                   Complete organization profile
                 </button>
-                <div className="relative" ref={workspaceDropdownRef}>
+                {!isSwasthyaWorkspace ? (
+                  <label className="flex items-center gap-2 rounded-2xl border border-white/70 bg-white/55 px-4 py-3 text-sm font-semibold text-slate-700 shadow-[0_14px_32px_-22px_rgba(15,23,42,0.24)] backdrop-blur">
+                    <CalendarDays className="h-4 w-4" />
+                    <span className="text-xs uppercase tracking-[0.12em] text-slate-500">
+                      Marks year
+                    </span>
+                    <select
+                      value={selectedMarksYear}
+                      onChange={(event) => {
+                        setSelectedMarksYear(event.target.value || "all");
+                      }}
+                      className="rounded-xl border border-white/70 bg-white px-2.5 py-1.5 text-sm font-semibold text-slate-700 outline-none transition focus:border-sky-300"
+                    >
+                      <option value="all">All years</option>
+                      {marksYearOptions.map((yearOption) => (
+                        <option key={yearOption} value={yearOption}>
+                          {yearOption}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <div className="relative z-[140]" ref={workspaceDropdownRef}>
                   <button
                     type="button"
                     onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
@@ -4648,7 +4742,7 @@ export default function Category() {
                   </button>
 
                   {isWorkspaceDropdownOpen ? (
-                    <div className="absolute left-0 top-[calc(100%+12px)] z-30 min-w-[220px] rounded-[24px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(235,244,255,0.86))] p-3 shadow-[0_30px_60px_-30px_rgba(15,23,42,0.28)] backdrop-blur-2xl">
+                    <div className="absolute left-0 top-[calc(100%+12px)] z-[160] min-w-[220px] rounded-[24px] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(235,244,255,0.86))] p-3 shadow-[0_30px_60px_-30px_rgba(15,23,42,0.28)] backdrop-blur-2xl">
                       <div className="space-y-2">
                         {categoryQuickActions.map((action) => {
                           const ActionIcon = action.icon;
@@ -4703,56 +4797,86 @@ export default function Category() {
                 </div>
               </div>
 
+              {!isSwasthyaWorkspace ? (
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/60 bg-white/45 px-4 py-3 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.18)] backdrop-blur">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Average marks ({selectedMarksYearLabel})
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                      {averageMarksDisplay}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/60 bg-white/45 px-4 py-3 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.18)] backdrop-blur">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Highest marks school
+                    </p>
+                    <p className="mt-2 text-sm font-semibold tracking-tight text-slate-900">
+                      {highestMarksSchoolName || "—"}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-700">
+                      {highestMarksSchoolName
+                        ? `Avg: ${highestMarksSchoolAverageDisplay}`
+                        : "No marks data"}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-8 grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
-                <div
-                  className={`relative mx-auto flex items-center justify-center ${
-                    isSwasthyaWorkspace
-                      ? "min-h-44 rounded-[30px] border border-white/60 bg-[linear-gradient(160deg,rgba(255,255,255,0.54),rgba(224,242,254,0.4))] p-6 shadow-[0_20px_40px_-24px_rgba(56,189,248,0.35)]"
-                      : "h-44 w-44 rounded-full bg-[conic-gradient(from_220deg,_#49d7ff,_#39ef7d,_#f1f45d,_#ffb86b,_#d694ff,_#49d7ff)] p-5 shadow-[0_20px_40px_-24px_rgba(34,211,238,0.8)]"
-                  }`}
-                >
-                  {isSwasthyaWorkspace ? (
-                    <div className="w-full space-y-4">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                          Hospital management
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-                          {doctorsValue + administrationValue + staffValue}
-                        </p>
-                        <p className="mt-1 text-sm text-slate-500">
-                          Total doctor, administration, and staff records
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="rounded-2xl bg-white/70 px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Doctors
+                <div className="space-y-2">
+                  {!isSwasthyaWorkspace ? (
+                    <p className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Student-Teacher Ratio
+                    </p>
+                  ) : null}
+                  <div
+                    className={`relative mx-auto flex items-center justify-center ${
+                      isSwasthyaWorkspace
+                        ? "min-h-44 rounded-[30px] border border-white/60 bg-[linear-gradient(160deg,rgba(255,255,255,0.54),rgba(224,242,254,0.4))] p-6 shadow-[0_20px_40px_-24px_rgba(56,189,248,0.35)]"
+                        : "h-44 w-44 rounded-full bg-[conic-gradient(from_220deg,_#49d7ff,_#39ef7d,_#f1f45d,_#ffb86b,_#d694ff,_#49d7ff)] p-5 shadow-[0_20px_40px_-24px_rgba(34,211,238,0.8)]"
+                    }`}
+                  >
+                    {isSwasthyaWorkspace ? (
+                      <div className="w-full space-y-4">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                            Hospital management
                           </p>
-                          <p className="mt-2 text-xl font-semibold text-slate-900">
-                            {doctorsValue}
+                          <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                            {doctorsValue + administrationValue + staffValue}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            Total doctor, administration, and staff records
                           </p>
                         </div>
-                        <div className="rounded-2xl bg-white/70 px-4 py-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Staff
-                          </p>
-                          <p className="mt-2 text-xl font-semibold text-slate-900">
-                            {staffValue}
-                          </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-2xl bg-white/70 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                              Doctors
+                            </p>
+                            <p className="mt-2 text-xl font-semibold text-slate-900">
+                              {doctorsValue}
+                            </p>
+                          </div>
+                          <div className="rounded-2xl bg-white/70 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                              Staff
+                            </p>
+                            <p className="mt-2 text-xl font-semibold text-slate-900">
+                              {staffValue}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white text-center shadow-inner">
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                        Ratio
-                      </span>
-                      <span className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-                        {ratioDisplay}
-                      </span>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white text-center shadow-inner">
+                        <span className="text-2xl font-semibold tracking-tight text-slate-900">
+                          {ratioDisplay}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -4776,7 +4900,7 @@ export default function Category() {
               </div>
             </div>
 
-            <div className="grid min-w-0 gap-5">
+            <div className="relative z-10 grid min-w-0 gap-5">
               <div className="overflow-hidden rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(31,32,37,0.82),rgba(31,32,37,0.92))] p-6 text-white shadow-[0_34px_70px_-36px_rgba(17,24,39,0.62)] backdrop-blur-xl">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -5255,13 +5379,78 @@ export default function Category() {
           className="h-[90vh] !w-[80vw] !max-w-[80vw] overflow-y-auto overflow-x-hidden border border-blue-100 bg-white/95"
         >
           <DialogHeader>
-            <DialogTitle className="text-2xl text-gray-900">
-              Complete organization profile
-            </DialogTitle>
-            <DialogDescription className="text-sm text-gray-600">
+            <div className="flex items-center gap-3">
+              <DialogTitle className="text-2xl text-gray-900">
+                Complete organization profile
+              </DialogTitle>
+              <button
+                type="button"
+                onClick={() => setIsCompanyProfileVideoModalOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-gray-300 bg-white p-2 text-slate-700 transition hover:border-gray-400 hover:text-slate-900"
+                aria-label="Watch organization profile setup video"
+                title="Watch organization profile setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+            </div>
+            {/* <DialogDescription className="text-sm text-gray-600">
               Admins must finish the organization details before continuing.
-            </DialogDescription>
+            </DialogDescription> */}
           </DialogHeader>
+
+          {isCompanyProfileVideoModalOpen ? (
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 px-4">
+              <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+                  <h2 className="text-base font-semibold text-gray-900">
+                    Organization Profile Video Guide
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsCompanyProfileVideoModalOpen(false)}
+                    className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                    aria-label="Close video modal"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-[18px] w-[18px]"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="aspect-video w-full bg-black">
+                  <iframe
+                    className="h-full w-full"
+                    src="https://www.youtube-nocookie.com/embed/NQNk2lU_Hi0?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                    title="Organization profile setup tutorial video"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <form onSubmit={handleCompanyInfoSubmit} className="flex min-w-0 flex-col space-y-6">
             <div className="min-w-0 space-y-4">

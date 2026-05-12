@@ -381,6 +381,13 @@ class ExamSchedule(models.Model):
         on_delete=models.CASCADE,
         related_name="schedules"
     )
+    academic_year = models.ForeignKey(
+        AcademicYear,
+        on_delete=models.CASCADE,
+        related_name="exam_schedules",
+        null=True,
+        blank=True,
+    )
     class_details = models.ForeignKey(
         ClassList,
         on_delete=models.CASCADE,
@@ -428,6 +435,9 @@ class ExamSchedule(models.Model):
         ]
 
     def __str__(self):
+        academic_year_name = getattr(self.academic_year, "year_name", "") or ""
+        if academic_year_name:
+            return f"{self.exam.exam_name} - {academic_year_name} - {self.class_details.class_name} - {self.subject.subject_name}"
         return f"{self.exam.exam_name} - {self.class_details.class_name} - {self.subject.subject_name}"
 
 

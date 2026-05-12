@@ -175,9 +175,24 @@ export default function DashboardPage() {
       "liabraryperson",
       "libraryperson",
     ].includes(normalizedCurrentRole);
+  const canAccessAccessControl =
+    currentUserAccess.isHeadMaster ||
+    ["admin", "administrator"].includes(normalizedCurrentRole);
 
-  const handleProtectedNavigation = (path, feature) => {
-    if (canAccessAccountsAndPayroll) {
+  const getAccessRestrictionText = (feature) => {
+    if (feature === "Access Control") {
+      return "Only Admin or Head Master users can use this section.";
+    }
+
+    return "Only Head Master, Assistant HeadMaster, Clerk, or Library Person users can use this section.";
+  };
+
+  const handleProtectedNavigation = (
+    path,
+    feature,
+    canAccess = canAccessAccountsAndPayroll,
+  ) => {
+    if (canAccess) {
       navigateTo(path);
       return;
     }
@@ -200,12 +215,30 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() =>
-                  handleProtectedNavigation("/accounts-management/", "Accounts")
+                  handleProtectedNavigation(
+                    "/accounts-management/?from=school-management",
+                    "Accounts",
+                  )
                 }
                 className="inline-flex h-9 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
               >
                 Accounts
               </button>
+              {canAccessAccessControl ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleProtectedNavigation(
+                      "/access-control/?from=school-management",
+                      "Access Control",
+                      canAccessAccessControl,
+                    )
+                  }
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-white/25 bg-white/10 px-3 text-sm font-semibold text-white transition hover:bg-white/20"
+                >
+                  Access Control
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() =>
@@ -443,8 +476,8 @@ export default function DashboardPage() {
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   You don&apos;t have access to {accessDialogState.feature}.
-                  Only Head Master, Asistant HeadMaster, Clerk, or Liabrary
-                  Person users can use this section.
+                  {" "}
+                  {getAccessRestrictionText(accessDialogState.feature)}
                 </p>
               </div>
               <button

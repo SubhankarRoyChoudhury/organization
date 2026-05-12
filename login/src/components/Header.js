@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import {
   clearLoginSession,
   getCurrentUserStatus,
@@ -74,6 +75,8 @@ export default function Header({ showOnlyOnHome = false, hideOnPaths = [] }) {
   });
   const [isProfileMenuOpen, setProfileMenuOpen] = useState(false);
   const [isAdminMenuOpen, setAdminMenuOpen] = useState(false);
+  const [isOrganizationInfoVideoOpen, setIsOrganizationInfoVideoOpen] =
+    useState(false);
   const pathname = usePathname();
   const isHomeRoute = pathname === "/";
   const isVidyaRoute = pathname?.startsWith("/category/vidya");
@@ -93,6 +96,11 @@ export default function Header({ showOnlyOnHome = false, hideOnPaths = [] }) {
         detail: { action },
       }),
     );
+  };
+  const closeOrganizationInfoVideoModal = () => {
+    setIsOrganizationInfoVideoOpen(false);
+    setProfileMenuOpen(false);
+    setAdminMenuOpen(false);
   };
 
   useEffect(() => {
@@ -453,16 +461,39 @@ export default function Header({ showOnlyOnHome = false, hideOnPaths = [] }) {
                 User Profile
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHeaderMenuAction("open_organization_information");
-                  setProfileMenuOpen(false);
-                }}
-                className="mt-2 w-full rounded-[18px] px-3 py-2.5 text-left font-semibold text-slate-700 transition hover:bg-white/85"
-              >
-                Organization information
-              </button>
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-[18px] px-2 py-1.5 transition hover:bg-white/85">
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHeaderMenuAction("open_organization_information");
+                    setProfileMenuOpen(false);
+                  }}
+                  className="flex-1 rounded-[14px] px-2 py-1 text-left font-semibold text-slate-700"
+                >
+                  Organization informationsss
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOrganizationInfoVideoOpen(true)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  aria-label="Watch organization information video"
+                  title="Watch organization information video"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4.5 w-4.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                  </svg>
+                </button>
+              </div>
 
               <div className="my-2 h-px bg-sky-100" />
 
@@ -482,6 +513,50 @@ export default function Header({ showOnlyOnHome = false, hideOnPaths = [] }) {
           ) : null}
         </div>
       </div>
+      {isOrganizationInfoVideoOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 px-4">
+              <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+                  <h2 className="text-base font-semibold text-gray-900">
+                    Organization Information Video Guide
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={closeOrganizationInfoVideoModal}
+                    className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                    aria-label="Close video modal"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-[18px] w-[18px]"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M18 6L6 18" />
+                      <path d="M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="aspect-video w-full bg-black">
+                  <iframe
+                    className="h-full w-full"
+                    src="https://www.youtube-nocookie.com/embed/NQNk2lU_Hi0?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                    title="Organization information tutorial video"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </header>
   );
 }

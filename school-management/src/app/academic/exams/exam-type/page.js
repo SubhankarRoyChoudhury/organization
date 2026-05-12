@@ -39,6 +39,7 @@ export default function ExamTypePage() {
   const [examTypes, setExamTypes] = useState([]);
   const [academicYears, setAcademicYears] = useState([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState("create");
   const [selectedExamType, setSelectedExamType] = useState(null);
   const [activeMenu, setActiveMenu] = useState(null);
@@ -217,7 +218,7 @@ export default function ExamTypePage() {
 
   const handleEdit = useCallback(async (examTypeItem) => {
     setActiveMenu(null);
-    if (currentUserRole === "teacher" && !isCurrentUserHeadMaster) {
+    if (currentUserRole === "non-teaching" || (currentUserRole === "teacher" && !isCurrentUserHeadMaster)) {
       setAccessDeniedMessage("Teacher cannot edit");
       setIsAccessDeniedDialogOpen(true);
       return;
@@ -234,9 +235,14 @@ export default function ExamTypePage() {
 
   const handleDelist = useCallback((examTypeItem) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("Non-teaching staff cannot delist");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(examTypeItem);
     setIsDelistDialogOpen(true);
-  }, []);
+  }, [currentUserRole]);
 
   const handleConfirmDelist = useCallback(async () => {
     if (!delistTarget || isDelisting) {
@@ -284,13 +290,36 @@ export default function ExamTypePage() {
             <h1 className="text-xl font-semibold tracking-wide sm:text-2xl">
               Exam Type
             </h1>
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
-            >
-              Add Exam Type
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(true)}
+                className="inline-flex items-center justify-center rounded-full border border-white/80 bg-white p-2.5 text-sky-700 shadow-sm transition hover:bg-sky-50"
+                aria-label="Watch exam type setup video"
+                title="Watch exam type setup video"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M10 8.8l5.2 3.2L10 15.2z" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
+              >
+                Add Exam Type
+              </button>
+            </div>
           </div>
         </section>
 
@@ -400,6 +429,48 @@ export default function ExamTypePage() {
           </div>
         </section>
       </div>
+
+      {isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-base font-semibold text-gray-900">
+                Exam Type Video Guide
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="rounded-full p-2 text-gray-500 transition hover:bg-gray-100"
+                aria-label="Close video modal"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-[18px] w-[18px]"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                className="h-full w-full"
+                src="https://www.youtube-nocookie.com/embed/sFGbM5T1V0o?autoplay=1&vq=hd1080&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1"
+                title="Exam type setup tutorial video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <ExamTypeCreateDialog
         key={activeDialogKey}

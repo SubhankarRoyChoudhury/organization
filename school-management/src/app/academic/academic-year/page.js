@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import AccessDeniedDialog from "@/components/ui/AccessDeniedDialog";
 import CreateAcademicYearDialog from "@/components/ui/CreateAcademicYearDialog";
 import DelistConfirmDialog from "@/components/ui/DelistConfirmDialog";
 import {
@@ -68,6 +69,9 @@ export default function AcademicYearPage() {
   const [isDelistDialogOpen, setIsDelistDialogOpen] = useState(false);
   const [delistTarget, setDelistTarget] = useState(null);
   const [isDelisting, setIsDelisting] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState("");
+  const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
+  const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
 
   const fetchAcademicYears = useCallback(async () => {
     setIsLoading(true);
@@ -93,8 +97,10 @@ export default function AcademicYearPage() {
         if (data?.company?.id) {
           setCompanyId(data.company.id);
         }
+        setCurrentUserRole(String(data?.role || "").trim().toLowerCase());
       } catch (_error) {
         setCompanyId(null);
+        setCurrentUserRole("");
       }
     };
     loadCompany();
@@ -129,6 +135,11 @@ export default function AcademicYearPage() {
 
   const handleEdit = (item) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("You do not have permission to edit academic year records.");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDialogMode("edit");
     setSelectedAcademicYear(item);
     setIsCreateDialogOpen(true);
@@ -136,12 +147,24 @@ export default function AcademicYearPage() {
 
   const handleDelist = (item) => {
     setActiveMenu(null);
+    if (currentUserRole === "non-teaching") {
+      setAccessDeniedMessage("You do not have permission to delist academic year records.");
+      setIsAccessDeniedDialogOpen(true);
+      return;
+    }
     setDelistTarget(item);
     setIsDelistDialogOpen(true);
   };
 
   const handleConfirmDelist = async () => {
     if (!delistTarget) {
+      return;
+    }
+    if (currentUserRole === "non-teaching") {
+      setIsDelistDialogOpen(false);
+      setDelistTarget(null);
+      setAccessDeniedMessage("You do not have permission to delist academic year records.");
+      setIsAccessDeniedDialogOpen(true);
       return;
     }
 
@@ -376,6 +399,15 @@ export default function AcademicYearPage() {
         onConfirm={handleConfirmDelist}
         itemLabel={delistTarget?.year_name || "this academic year"}
         isSubmitting={isDelisting}
+      />
+
+      <AccessDeniedDialog
+        open={isAccessDeniedDialogOpen}
+        message={accessDeniedMessage || "You do not have permission for this action."}
+        onClose={() => {
+          setIsAccessDeniedDialogOpen(false);
+          setAccessDeniedMessage("");
+        }}
       />
     </main>
   );

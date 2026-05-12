@@ -55,6 +55,7 @@ import {
   createStaffDepartment,
   getStaffJobTitles,
   createStaffJobTitle,
+  extractAttachmentIdFromUploadResponse,
 } from "@/app/api/apiService";
 import {
   Dialog,
@@ -2303,8 +2304,7 @@ export default function Vidya() {
         companyId,
       );
       const attachmentId =
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+        extractAttachmentIdFromUploadResponse(uploadResponse);
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
       }
@@ -2328,8 +2328,7 @@ export default function Vidya() {
         companyId,
       );
       const attachmentId =
-        uploadResponse?.response?.file?.id ||
-        uploadResponse?.response?.file?.attachment_id;
+        extractAttachmentIdFromUploadResponse(uploadResponse);
       if (!attachmentId) {
         throw new Error("Attachment ID missing");
       }
