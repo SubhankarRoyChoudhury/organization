@@ -144,10 +144,10 @@ export default function SchoolAnalyticsPage() {
       },
       {
         label: "Avg marks / student",
-        value: formatNumber(summary.average_marks_per_student, {
+        value: formatNumber(summary.average_marks_percentage, {
           maximumFractionDigits: 2,
         }),
-        detail: `${formatPercent(summary.average_marks_percentage)} average score`,
+        detail: `${formatPercent(summary.average_marks_per_student)} average score`,
         icon: Percent,
         accent: "bg-indigo-50 text-indigo-700",
       },

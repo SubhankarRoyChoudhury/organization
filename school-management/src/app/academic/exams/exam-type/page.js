@@ -36,6 +36,7 @@ function formatAcademicYearLabel(item) {
 }
 
 export default function ExamTypePage() {
+  const PAGE_SIZE = 5;
   const [examTypes, setExamTypes] = useState([]);
   const [academicYears, setAcademicYears] = useState([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -53,6 +54,8 @@ export default function ExamTypePage() {
   const [isCurrentUserHeadMaster, setIsCurrentUserHeadMaster] = useState(false);
   const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalExamTypeCount, setTotalExamTypeCount] = useState(0);
 
   const academicYearById = useMemo(() => {
     const entries = new Map();
@@ -62,22 +65,34 @@ export default function ExamTypePage() {
     return entries;
   }, [academicYears]);
 
-  const fetchExamTypes = useCallback(async () => {
+  const fetchExamTypes = useCallback(async (pageToLoad = currentPage) => {
     setIsLoading(true);
     setErrorMessage("");
     try {
-      const data = await getExamTypeList();
-      setExamTypes(Array.isArray(data) ? data : []);
+      const data = await getExamTypeList({
+        page: pageToLoad,
+        pageSize: PAGE_SIZE,
+      });
+      if (Array.isArray(data)) {
+        setExamTypes(data);
+        setTotalExamTypeCount(data.length);
+      } else {
+        const results = Array.isArray(data?.results) ? data.results : [];
+        setExamTypes(results);
+        setTotalExamTypeCount(Number(data?.count) || 0);
+      }
     } catch (_error) {
       setErrorMessage("Unable to load exam type list.");
+      setExamTypes([]);
+      setTotalExamTypeCount(0);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentPage, PAGE_SIZE]);
 
   useEffect(() => {
-    fetchExamTypes();
-  }, [fetchExamTypes]);
+    fetchExamTypes(currentPage);
+  }, [fetchExamTypes, currentPage]);
 
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -281,10 +296,20 @@ export default function ExamTypePage() {
   }, [isCreateDialogOpen]);
 
   const activeDialogKey = `${dialogMode}-${selectedExamType?.id || "new"}-${isCreateDialogOpen ? "open" : "closed"}`;
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(totalExamTypeCount / PAGE_SIZE)),
+    [totalExamTypeCount, PAGE_SIZE],
+  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
     <main className="dashboard-shell h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full w-full flex-col px-3 pb-4 pt-16 sm:px-6 lg:px-8 lg:pt-8">
+      <div className="flex h-full w-full flex-col px-3 pb-4 pt-6 sm:px-6 lg:px-8 lg:pt-8">
         <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-4 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:px-6 sm:py-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-xl font-semibold tracking-wide sm:text-2xl">
@@ -323,7 +348,7 @@ export default function ExamTypePage() {
           </div>
         </section>
 
-        <section className="mt-6 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px] border-collapse text-left">
               <thead>
@@ -377,7 +402,7 @@ export default function ExamTypePage() {
                       className="border-b border-slate-100 text-sm text-slate-700"
                     >
                       <td className="px-2 py-3 font-medium text-slate-800">
-                        {index + 1}
+                        {(currentPage - 1) * PAGE_SIZE + index + 1}
                       </td>
                       <td className="px-2 py-3">{academicYearName}</td>
                       <td className="px-2 py-3">{item.exam_name || "-"}</td>
@@ -427,6 +452,31 @@ export default function ExamTypePage() {
               </tbody>
             </table>
           </div>
+          {!isLoading && !errorMessage && examTypes.length > 0 ? (
+            <div className="mt-3 shrink-0 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+              <p className="text-xs text-slate-600 sm:text-sm">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 

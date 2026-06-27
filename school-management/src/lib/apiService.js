@@ -794,8 +794,13 @@ export async function delistSubjectList(subjectId, accessTokenFromSubmit = "") {
   }
 }
 
-export async function getExamTypeList() {
-  const response = await authorizedFetch("school-management/exam-type-list");
+export async function getExamTypeList({ page, pageSize } = {}) {
+  const response = await authorizedFetch("school-management/exam-type-list", {
+    queryParams: {
+      page,
+      page_size: pageSize,
+    },
+  });
 
   if (!response.ok) {
     throw new Error("Unable to fetch exam type list");
@@ -1383,4 +1388,119 @@ export async function delistStudentAcademicRecordList(recordId, accessTokenFromS
   if (!response.ok) {
     throw new Error("Unable to delete student academic record");
   }
+}
+
+function getVoucherAccessToken() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return (
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("access_token") ||
+    ""
+  );
+}
+
+function encodeVoucherFormPayload(payload) {
+  const params = new URLSearchParams();
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      params.append(key, String(value));
+    }
+  });
+  return params.toString();
+}
+
+async function postVoucherForm(path, payload) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...(getVoucherAccessToken()
+        ? { Authorization: `Bearer ${getVoucherAccessToken()}` }
+        : {}),
+    },
+    body: encodeVoucherFormPayload(payload),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      data?.msg ||
+      data?.response ||
+      data?.error ||
+      response.statusText ||
+      "Voucher request failed";
+    const error = new Error(message);
+    error.response = { data };
+    throw error;
+  }
+  return data;
+}
+
+export async function getReceiptVoucherDebitAccounts() {
+  const response = await postVoucherForm("voucher_api/getAllAccountNameDebit/Receipt", {
+    access_token: getVoucherAccessToken() || undefined,
+  });
+  return response?.response || [];
+}
+
+export async function getReceiptVoucherCreditAccounts() {
+  const response = await postVoucherForm("voucher_api/getAllAccountNameCredit/Receipt", {
+    access_token: getVoucherAccessToken() || undefined,
+    cr_acnt: "",
+  });
+  return response?.response || [];
+}
+
+export async function generateReceiptVoucherId(companyId) {
+  if (!companyId) {
+    throw new Error("company_id is required to generate voucher id.");
+  }
+  const voucherToken = `${companyId}-rv-`;
+  const response = await postVoucherForm(`voucher_api/generateVoucherId/${voucherToken}`, {
+    access_token: getVoucherAccessToken() || undefined,
+  });
+  return response || "";
+}
+
+export async function createReceiptVoucher(payload) {
+  const amountValue = Number(payload?.amount) || 0;
+  const transactionDescription =
+    String(payload?.description || "").trim() ||
+    `Receipt via ${payload?.payment_mode || "ONLINE"}`;
+  const voucherPayload = {
+    id: payload?.voucher_table_id ? Number(payload.voucher_table_id) : null,
+    company_id: Number(payload?.company_id),
+    voucher_type: "Receipt",
+    voucher_id: payload?.voucher_id || null,
+    voucher_no: null,
+    voucher_source: "un_linked",
+    voucher_date: payload?.voucher_date,
+    paid_from_account_name_id: Number(payload?.cr_account_name_id),
+    payment_mode: payload?.payment_mode || "ONLINE",
+    total_amount: amountValue,
+    note: payload?.description || null,
+    reference_no: payload?.reference_no || "",
+    created_by: payload?.created_by || "Web User",
+    created_on: new Date().toISOString(),
+  };
+
+  const transactionPayload = {
+    ...(payload?.transaction_id ? { id: Number(payload.transaction_id) } : {}),
+    company_id: Number(payload?.company_id),
+    voucher_id: payload?.voucher_id || null,
+    dr_account_name_id: Number(payload?.dr_account_name_id),
+    dr_amount: amountValue,
+    cr_account_name_id: Number(payload?.cr_account_name_id),
+    cr_amount: amountValue,
+    description: transactionDescription,
+  };
+
+  return postVoucherForm("voucher_api/addNewVoucher/", {
+    access_token: getVoucherAccessToken() || undefined,
+    new_voucher: JSON.stringify(voucherPayload),
+    saved_transactions: JSON.stringify([transactionPayload]),
+    reason: "Created from student fees collection",
+  });
 }

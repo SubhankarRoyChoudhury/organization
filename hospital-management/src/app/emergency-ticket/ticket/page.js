@@ -91,7 +91,7 @@ function EmergencyPatientCardContent() {
         );
         const primaryCompany = data?.companies?.[0] || {};
         const resolvedCompanyId =
-          data?.company_id || primaryCompany?.company_id;
+          data?.company_id || primaryCompany?.company_id || localStorage.getItem("company_id");
         setCompanyMeta({
           name:
             data?.company_name ||

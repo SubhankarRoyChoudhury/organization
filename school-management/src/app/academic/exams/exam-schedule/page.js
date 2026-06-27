@@ -109,6 +109,7 @@ function renderSubjectSchedulesTable(item) {
 }
 
 export default function ExamSchedulePage() {
+  const PAGE_SIZE = 5;
   const [examSchedules, setExamSchedules] = useState([]);
   const [examTypeOptions, setExamTypeOptions] = useState([]);
   const [classOptions, setClassOptions] = useState([]);
@@ -131,6 +132,7 @@ export default function ExamSchedulePage() {
   const [isCurrentUserHeadMaster, setIsCurrentUserHeadMaster] = useState(false);
   const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const examTypeById = useMemo(() => {
     const entries = new Map();
@@ -158,6 +160,26 @@ export default function ExamSchedulePage() {
       (item) => String(item?.academic_year_id || "").trim() === selectedAcademicYearId,
     );
   }, [examSchedules, selectedAcademicYearId]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredExamSchedules.length / PAGE_SIZE)),
+    [filteredExamSchedules.length, PAGE_SIZE],
+  );
+
+  const paginatedExamSchedules = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredExamSchedules.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [currentPage, filteredExamSchedules, PAGE_SIZE]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedAcademicYearId]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     const closeOnOutsideClick = (event) => {
@@ -375,13 +397,13 @@ export default function ExamSchedulePage() {
 
   return (
     <main className="dashboard-shell h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full w-full flex-col px-3 pb-4 pt-16 sm:px-6 lg:px-8 lg:pt-8">
+      <div className="flex h-full w-full flex-col px-3 pb-4 pt-6 sm:px-6 lg:px-8 lg:pt-8">
         <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-4 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:px-6 sm:py-5">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2 sm:items-center">
             <h1 className="text-[14px] font-semibold tracking-wide sm:text-[18px]">
               Exam Schedule
             </h1>
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
               <label className="sr-only" htmlFor="exam-schedule-academic-year-filter">
                 Academic Year
               </label>
@@ -389,7 +411,7 @@ export default function ExamSchedulePage() {
                 id="exam-schedule-academic-year-filter"
                 value={selectedAcademicYearId}
                 onChange={(event) => setSelectedAcademicYearId(event.target.value)}
-                className="h-10 min-w-[164px] rounded-lg border border-white/80 bg-white px-3 text-sm font-medium text-sky-700 outline-none transition focus:border-white focus:ring-2 focus:ring-white/50"
+                className="h-10 min-w-0 w-[170px] rounded-lg border border-white/80 bg-white px-3 text-sm font-medium text-sky-700 outline-none transition focus:border-white focus:ring-2 focus:ring-white/50 sm:min-w-[164px]"
               >
                 <option value="">All academic years</option>
                 {academicYearFilterOptions.map((item) => (
@@ -426,16 +448,41 @@ export default function ExamSchedulePage() {
                   setDialogMode("create");
                   setIsScheduleDialogOpen(true);
                 }}
-                className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50"
+                className="hidden whitespace-nowrap rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50 sm:inline-flex"
               >
                 Add Exam Schedule
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedExamSchedule(null);
+                  setDialogMode("create");
+                  setIsScheduleDialogOpen(true);
+                }}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white text-sky-700 shadow-sm transition hover:bg-sky-50 sm:hidden"
+                aria-label="Add exam schedule"
+                title="Add Exam Schedule"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
               </button>
             </div>
           </div>
         </section>
 
-        <section className="mt-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
-          <div className="h-full overflow-auto pb-10 sm:pb-6">
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+          <div className="overflow-x-auto pb-3 sm:pb-4">
             <table className="w-full min-w-[1080px] border-collapse text-left">
               <thead>
                 <tr className="text-center text-xs uppercase tracking-wide text-slate-500">
@@ -493,7 +540,7 @@ export default function ExamSchedulePage() {
                   </tr>
                 ) : null}
 
-                {filteredExamSchedules.map((item, index) => {
+                {paginatedExamSchedules.map((item, index) => {
                   const examName =
                     item.exam_name ||
                     examTypeById.get(String(item.exam_id))?.exam_name ||
@@ -506,7 +553,7 @@ export default function ExamSchedulePage() {
                     >
                       <td className="px-2 py-4 font-medium text-slate-800">
                         <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
-                          {index + 1}
+                          {(currentPage - 1) * PAGE_SIZE + index + 1}
                         </span>
                       </td>
                       <td className="px-2 py-4 align-center">
@@ -560,6 +607,31 @@ export default function ExamSchedulePage() {
               </tbody>
             </table>
           </div>
+          {!isLoading && !errorMessage && filteredExamSchedules.length > 0 ? (
+            <div className="mt-3 shrink-0 flex items-center justify-between gap-2 border-t border-slate-200 bg-white pt-3">
+              <p className="text-xs text-slate-600 sm:text-sm">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 

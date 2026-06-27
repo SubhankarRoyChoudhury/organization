@@ -98,18 +98,33 @@ function SingleSelectDropdown({
   options,
   onChange,
   placeholder = "Select option",
+  searchable = false,
+  searchPlaceholder = "Search...",
   disabled = false,
   className = "",
   autoFocus = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const containerRef = useRef(null);
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
+  const searchInputRef = useRef(null);
   const hasAutoOpenedRef = useRef(false);
 
   const selectedOption = options.find((option) => String(option?.id) === String(value || ""));
   const selectedLabel = String(selectedOption?.label || "").trim();
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = String(searchTerm || "").trim().toLowerCase();
+    if (!searchable || !normalizedQuery) {
+      return options;
+    }
+    return options.filter((option) =>
+      String(option?.label || "")
+        .toLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [options, searchTerm, searchable]);
 
   const updateMenuPosition = () => {
     const containerElement = containerRef.current;
@@ -186,6 +201,22 @@ function SingleSelectDropdown({
   }, [disabled, isOpen]);
 
   useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm("");
+      return undefined;
+    }
+    if (!searchable) {
+      return undefined;
+    }
+    const focusId = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => {
+      window.cancelAnimationFrame(focusId);
+    };
+  }, [isOpen, searchable]);
+
+  useEffect(() => {
     if (!autoFocus || disabled) {
       return undefined;
     }
@@ -211,6 +242,7 @@ function SingleSelectDropdown({
 
   const chooseOption = (optionId) => {
     onChange(optionId);
+    setSearchTerm("");
     setIsOpen(false);
   };
 
@@ -245,9 +277,21 @@ function SingleSelectDropdown({
               className="fixed z-[2500] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_42px_rgba(15,23,42,0.22)]"
               role="listbox"
             >
+              {searchable ? (
+                <div className="border-b border-slate-200 p-2">
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+              ) : null}
               <div className="max-h-full overflow-y-auto p-1">
-                {options.length > 0 ? (
-                  options.map((option) => {
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => {
                     const optionId = String(option?.id || "");
                     const isSelected = String(value || "") === optionId;
                     return (
@@ -1058,6 +1102,8 @@ export default function DialogStudentFeesCollection({
                 }),
               )}
               placeholder="Select student record"
+              searchable
+              searchPlaceholder="Search student..."
               autoFocus
               disabled={
                 isEditMode ||

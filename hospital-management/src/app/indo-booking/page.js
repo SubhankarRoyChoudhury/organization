@@ -299,9 +299,9 @@ export default function INDOBookingPage() {
       const data = await get_Hospital_User_Login_Details(username);
       setLoggedInDetails(data);
       if (!hasLockedCompany) {
-        const parsed = sanitizeCompanyId(data?.company_id);
+        const parsed = sanitizeCompanyId(data?.company_id || localStorage.getItem("company_id"));
         if (parsed) {
-          setCompanyId(data?.company_id);
+          setCompanyId(parsed);
           setCompanyError(null);
           setForm((prev) => ({
             ...prev,

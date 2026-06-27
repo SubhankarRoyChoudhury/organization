@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getCompanyStudentCount,
   getCompanyTeacherCount,
   getCurrentSchoolInfo,
+  getStudentFeesCollectionList,
 } from "@/lib/apiService";
 
 const classSchedule = [
@@ -57,14 +58,14 @@ const announcements = [
 const admissions = [
   { name: "Aarav Sharma", grade: "Grade 5", status: "Document Review" },
   { name: "Maira Khan", grade: "Grade 2", status: "Interview Scheduled" },
-  { name: "Ishaan Gupta", grade: "Grade 8", status: "Fee Pending" },
+  // { name: "Ishaan Gupta", grade: "Grade 8", status: "Fee Pending" },
 ];
 
 function StatCard({ label, value, trend }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+    <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
       <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+      <p className="mt-2 truncate text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
         {value}
       </p>
       <p className="mt-2 text-sm text-emerald-600">{trend}</p>
@@ -75,6 +76,8 @@ function StatCard({ label, value, trend }) {
 export default function DashboardPage() {
   const [studentCount, setStudentCount] = useState("0");
   const [teacherCount, setTeacherCount] = useState("0");
+  const [feeCollection, setFeeCollection] = useState("₹ 0");
+  const [pendingFees, setPendingFees] = useState("₹ 0");
   const [currentUserAccess, setCurrentUserAccess] = useState({
     role: "",
     isHeadMaster: false,
@@ -83,6 +86,9 @@ export default function DashboardPage() {
     open: false,
     feature: "",
   });
+  const [scrollAreaHeight, setScrollAreaHeight] = useState(null);
+  const dashboardWrapperRef = useRef(null);
+  const topSummaryRef = useRef(null);
 
   const normalizeRoleValue = (value) =>
     String(value || "")
@@ -122,6 +128,86 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    const updateScrollAreaHeight = () => {
+      const wrapper = dashboardWrapperRef.current;
+      const topSummary = topSummaryRef.current;
+      if (!wrapper || !topSummary) {
+        return;
+      }
+
+      const wrapperHeight = wrapper.clientHeight;
+      const topSummaryHeight = topSummary.offsetHeight;
+      const wrapperStyles = window.getComputedStyle(wrapper);
+      const rowGap = Number.parseFloat(wrapperStyles.rowGap || "0") || 0;
+      const nextHeight = Math.max(0, wrapperHeight - topSummaryHeight - rowGap);
+      setScrollAreaHeight(nextHeight);
+    };
+
+    updateScrollAreaHeight();
+    window.addEventListener("resize", updateScrollAreaHeight);
+
+    const resizeObserver = new ResizeObserver(updateScrollAreaHeight);
+    if (dashboardWrapperRef.current) {
+      resizeObserver.observe(dashboardWrapperRef.current);
+    }
+    if (topSummaryRef.current) {
+      resizeObserver.observe(topSummaryRef.current);
+    }
+
+    return () => {
+      window.removeEventListener("resize", updateScrollAreaHeight);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadFeesSummary = async () => {
+      try {
+        const data = await getStudentFeesCollectionList();
+        if (!mounted) {
+          return;
+        }
+
+        const totals = Array.isArray(data)
+          ? data.reduce((acc, item) => {
+              const dueAmount = Number.parseFloat(String(item?.due_amount ?? "0"));
+              const paidAmount = Number.parseFloat(String(item?.paid_amount ?? "0"));
+
+              return {
+                due: acc.due + (Number.isFinite(dueAmount) ? dueAmount : 0),
+                paid: acc.paid + (Number.isFinite(paidAmount) ? paidAmount : 0),
+              };
+            }, { due: 0, paid: 0 })
+          : { due: 0, paid: 0 };
+
+        const formatter = new Intl.NumberFormat("en-IN", {
+          notation: "compact",
+          compactDisplay: "short",
+          maximumFractionDigits: 1,
+          style: "currency",
+          currency: "INR",
+        });
+
+        setFeeCollection(formatter.format(totals.paid).replace(/^₹/, "₹ "));
+        setPendingFees(formatter.format(totals.due).replace(/^₹/, "₹ "));
+      } catch (_error) {
+        if (!mounted) {
+          return;
+        }
+        setFeeCollection("₹ 0");
+        setPendingFees("₹ 0");
+      }
+    };
+
+    loadFeesSummary();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
 
     getCurrentSchoolInfo()
@@ -154,8 +240,8 @@ export default function DashboardPage() {
   const quickStats = [
     { label: "Total Students", value: studentCount, },
     { label: "Teachers", value: teacherCount, },
-    { label: "Today's Attendance", value: "94.6%",},
-    { label: "Pending Fees", value: "₹ 3.8L", },
+    { label: "Fee Collection", value: feeCollection,},
+    { label: "Pending Fees", value: pendingFees, },
   ];
 
   const navigateTo = (path) => {
@@ -204,14 +290,20 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="dashboard-shell h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full w-full flex-col px-3 pb-4 pt-16 sm:px-6 lg:px-8 lg:pt-8">
-        <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-5 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:rounded-2xl sm:px-6 sm:py-5">
+    <main className="dashboard-shell h-dvh min-h-dvh overflow-hidden bg-slate-100 text-slate-900">
+      <div
+        ref={dashboardWrapperRef}
+        className="box-border flex h-full w-full min-h-0 flex-col gap-4 px-3 pb-4 pt-16 sm:px-6 lg:gap-6 lg:px-8 lg:pt-8"
+      >
+        <section
+          ref={topSummaryRef}
+          className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-5 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:rounded-2xl sm:px-6 sm:py-5"
+        >
           <div className="flex items-center justify-between gap-3">
             <p className="text-[13px] md:text-[16px] font-semibold uppercase tracking-[0.2em] text-sky-100">
               School Dashboard
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() =>
@@ -255,7 +347,10 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 pb-6">
+        <div
+          className="min-h-0 max-h-full flex-1 overflow-y-auto overscroll-contain pr-1 pb-16"
+          style={scrollAreaHeight ? { height: `${scrollAreaHeight}px` } : undefined}
+        >
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {quickStats.map((item) => (
               <StatCard
@@ -267,9 +362,12 @@ export default function DashboardPage() {
             ))}
           </section>
 
-          <section className="mt-6 grid gap-6 xl:grid-cols-[1.55fr_1fr]">
-            <div className="space-y-6">
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+          <section className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-6">
+              <article
+                aria-disabled="true"
+                className="pointer-events-none select-none rounded-2xl border border-slate-200 bg-white p-4 opacity-50 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5"
+              >
                 <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                   <div>
                     <h2 className="text-xl font-semibold text-slate-900">
@@ -324,7 +422,10 @@ export default function DashboardPage() {
                 </div>
               </article>
 
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+              <article
+                aria-disabled="true"
+                className="pointer-events-none select-none rounded-2xl border border-slate-200 bg-white p-4 opacity-50 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5"
+              >
                 <h2 className="text-xl font-semibold text-slate-900">
                   Today&apos;s Class Schedule
                 </h2>
@@ -384,8 +485,11 @@ export default function DashboardPage() {
               </article>
             </div>
 
-            <div className="space-y-6">
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+            <div className="min-w-0 space-y-6">
+              <article
+                aria-disabled="true"
+                className="pointer-events-none select-none rounded-2xl border border-slate-200 bg-white p-4 opacity-50 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5"
+              >
                 <h2 className="text-xl font-semibold text-slate-900">
                   Announcements
                 </h2>
@@ -428,37 +532,6 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   ))}
-                </div>
-              </article>
-
-              <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Fee Collection
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Collected this month:{" "}
-                  <span className="font-semibold text-slate-800">₹ 18.4L</span>
-                </p>
-                <div className="mt-4 h-2 rounded-full bg-slate-200">
-                  <div className="h-2 w-[78%] rounded-full bg-emerald-500" />
-                </div>
-                <p className="mt-2 text-sm text-slate-600">
-                  78% of monthly target achieved
-                </p>
-
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    className="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-700"
-                  >
-                    Send Reminders
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                  >
-                    Export Report
-                  </button>
                 </div>
               </article>
             </div>

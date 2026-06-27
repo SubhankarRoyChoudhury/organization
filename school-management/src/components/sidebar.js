@@ -277,21 +277,6 @@ const isHrefMatch = (href, sidebarPathname, searchParams) => {
   return true;
 };
 
-function MenuDotsIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="M4 6h16M4 12h16M4 18h16" />
-    </svg>
-  );
-}
-
 function CloseIcon({ animated = false }) {
   return (
     <svg
@@ -616,20 +601,7 @@ function ChevronIcon({ open = false }) {
   );
 }
 
-function PanelArrowIcon({ collapsed = false }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden="true"
-    >
-      <path d="m15 6-6 6 6 6" />
-    </svg>
-  );
-}
+const SIDEBAR_TOGGLE_EVENT = "school-sidebar-toggle";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -762,6 +734,24 @@ export default function Sidebar() {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const handleHeaderToggle = () => {
+      const isDesktopViewport = window.matchMedia("(min-width: 1024px)").matches;
+      if (isDesktopViewport) {
+        setIsDesktopCollapsed((prev) => !prev);
+        return;
+      }
+      setIsMobileOpen((prev) => !prev);
+    };
+    window.addEventListener(SIDEBAR_TOGGLE_EVENT, handleHeaderToggle);
+    return () => {
+      window.removeEventListener(SIDEBAR_TOGGLE_EVENT, handleHeaderToggle);
+    };
+  }, []);
+
   if (!isSidebarRoute) {
     return null;
   }
@@ -828,28 +818,6 @@ export default function Sidebar() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsMobileOpen((prev) => !prev)}
-        className="fixed left-4 top-[84px] z-50 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm lg:hidden"
-        aria-label={isMobileOpen ? "Close sidebar menu" : "Open sidebar menu"}
-      >
-        <MenuDotsIcon />
-      </button>
-
-      <button
-        type="button"
-        onClick={() => setIsDesktopCollapsed((prev) => !prev)}
-        className={`fixed top-[84px] z-50 hidden h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition-all lg:inline-flex ${
-          isDesktopCollapsed ? "left-[5.5rem]" : "left-[17rem]"
-        }`}
-        aria-label={
-          isDesktopCollapsed ? "Open desktop sidebar" : "Close desktop sidebar"
-        }
-      >
-        <PanelArrowIcon collapsed={isDesktopCollapsed} />
-      </button>
-
       {isMobileOpen ? (
         <button
           type="button"

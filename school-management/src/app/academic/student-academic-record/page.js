@@ -21,7 +21,7 @@ import {
   updateStudentAcademicRecordList,
 } from "@/lib/apiService";
 
-const STUDENT_RECORDS_PER_PAGE = 10;
+const STUDENT_RECORDS_PER_PAGE = 5;
 
 function formatDate(value) {
   if (!value) {
@@ -352,22 +352,6 @@ function buildAttachmentPreviewUrl(attachment) {
   return `/media/${normalized}`;
 }
 
-function getVisiblePageItems(currentPage, totalPages) {
-  if (totalPages <= 5) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  if (currentPage <= 3) {
-    return [1, 2, 3, "...", totalPages];
-  }
-
-  if (currentPage >= totalPages - 2) {
-    return [1, "...", totalPages - 2, totalPages - 1, totalPages];
-  }
-
-  return [1, "...", currentPage, "...", totalPages];
-}
-
 function StudentAcademicRecordPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -405,7 +389,6 @@ function StudentAcademicRecordPageContent() {
   const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
   const totalPages = Math.max(1, Math.ceil(totalCount / STUDENT_RECORDS_PER_PAGE));
-  const visiblePageItems = getVisiblePageItems(currentPage, totalPages);
 
   const fetchRecords = useCallback(async () => {
     setIsLoading(true);
@@ -986,7 +969,7 @@ function StudentAcademicRecordPageContent() {
           </div>
         </section>
 
-        <section className="mt-6 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+        <section className="mt-6 flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1320px] border-collapse text-left">
               <thead>
@@ -1103,85 +1086,32 @@ function StudentAcademicRecordPageContent() {
               </tbody>
             </table>
           </div>
-        </section>
-
-        <div className="mt-4 shrink-0 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
-          <p className="text-sm text-slate-600">
-            Showing{" "}
-            {records.length > 0 ? (currentPage - 1) * STUDENT_RECORDS_PER_PAGE + 1 : 0}
-            -
-            {(currentPage - 1) * STUDENT_RECORDS_PER_PAGE + records.length} of{" "}
-            {totalCount}
-          </p>
-          <div className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1">
-            <button
-              type="button"
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={isLoading || !hasPreviousPage}
-              className="inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Previous page"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </button>
-            {visiblePageItems.map((item, index) =>
-              item === "..." ? (
-                <span
-                  key={`ellipsis-${index}`}
-                  className="inline-flex h-7 min-w-[18px] items-center justify-center text-xs text-slate-500"
-                >
-                  ...
-                </span>
-              ) : (
+          {!isLoading && !errorMessage && totalCount > STUDENT_RECORDS_PER_PAGE ? (
+            <div className="mt-3 shrink-0 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+              <p className="text-xs text-slate-600 sm:text-sm">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
                 <button
-                  key={`page-${item}`}
                   type="button"
-                  onClick={() => setCurrentPage(item)}
-                  disabled={isLoading || item === currentPage}
-                  className={`inline-flex h-7 min-w-[20px] items-center justify-center rounded px-1.5 text-xs font-medium transition ${
-                    item === currentPage
-                      ? "bg-sky-500 text-white"
-                      : "text-slate-600 hover:bg-slate-200 hover:text-slate-800"
-                  } disabled:cursor-not-allowed`}
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={isLoading || !hasPreviousPage}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
                 >
-                  {item}
+                  Previous
                 </button>
-              ),
-            )}
-            <button
-              type="button"
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-              }
-              disabled={isLoading || !hasNextPage}
-              className="inline-flex h-7 w-7 items-center justify-center rounded text-slate-500 transition hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Next page"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M9 6l6 6-6 6" />
-              </svg>
-            </button>
-          </div>
-        </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={isLoading || !hasNextPage}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
       </div>
 
       <StudentAcademicRecordCreateDialog

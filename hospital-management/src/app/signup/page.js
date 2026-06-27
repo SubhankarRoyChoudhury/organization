@@ -254,6 +254,9 @@ function SignUpContent() {
         if (parsed) return parsed;
       }
     }
+    const storedCompanyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
+    const parsedStored = sanitizeCompanyId(storedCompanyId);
+    if (parsedStored) return parsedStored;
     return null;
   };
 

@@ -69,7 +69,7 @@ export default function WardsPage() {
       const data = await get_Hospital_User_Login_Details(username);
       setLoggedInDetails(data);
       const resolvedCompanyId =
-        data?.company_id || data?.companies?.[0]?.company_id;
+        data?.company_id || data?.companies?.[0]?.company_id || localStorage.getItem("company_id");
       fetchWards(resolvedCompanyId);
       setError(null);
     } catch (err) {

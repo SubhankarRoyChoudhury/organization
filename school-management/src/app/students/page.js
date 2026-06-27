@@ -26,7 +26,7 @@ import {
 import { FcHighPriority } from "react-icons/fc";
 import { FcApproval } from "react-icons/fc";
 
-const STUDENTS_PER_PAGE = 10;
+const STUDENTS_PER_PAGE = 5;
 
 function formatDob(value) {
   if (!value) {
@@ -188,6 +188,19 @@ export default function StudentsPage() {
   const [recentCreatedAcademicRecord, setRecentCreatedAcademicRecord] = useState(null);
   const totalPages = Math.max(1, Math.ceil(totalCount / STUDENTS_PER_PAGE));
   const visiblePageItems = getVisiblePageItems(currentPage, totalPages);
+  const sortStudentsByName = useCallback((items) => {
+    return [...(Array.isArray(items) ? items : [])].sort((left, right) => {
+      const leftName = String(left?.name || "").trim();
+      const rightName = String(right?.name || "").trim();
+      const nameComparison = leftName.localeCompare(rightName, undefined, {
+        sensitivity: "base",
+      });
+      if (nameComparison !== 0) {
+        return nameComparison;
+      }
+      return String(left?.id || "").localeCompare(String(right?.id || ""));
+    });
+  }, []);
 
   const fetchStudents = useCallback(async () => {
     setIsLoading(true);
@@ -201,7 +214,7 @@ export default function StudentsPage() {
 
       if (Array.isArray(data)) {
         const start = (currentPage - 1) * STUDENTS_PER_PAGE;
-        const pageData = data.slice(start, start + STUDENTS_PER_PAGE);
+        const pageData = sortStudentsByName(data.slice(start, start + STUDENTS_PER_PAGE));
         setStudents(pageData);
         setTotalCount(data.length);
         setHasPreviousPage(currentPage > 1);
@@ -224,7 +237,7 @@ export default function StudentsPage() {
           ? Boolean(data.previous)
           : currentPage > 1;
 
-      setStudents(pageData);
+      setStudents(sortStudentsByName(pageData));
       setTotalCount(count);
       setHasNextPage(nextExists);
       setHasPreviousPage(previousExists);
@@ -241,7 +254,7 @@ export default function StudentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, debouncedSearchText]);
+  }, [currentPage, debouncedSearchText, sortStudentsByName]);
 
   useEffect(() => {
     fetchStudents();
@@ -610,7 +623,7 @@ export default function StudentsPage() {
 
   return (
     <main className="dashboard-shell h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full w-full flex-col px-3 pb-4 pt-16 sm:px-6 lg:px-8 lg:pt-8">
+      <div className="flex h-full w-full flex-col px-3 pb-4 pt-6 sm:px-6 lg:px-8 lg:pt-8">
         <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-5 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:px-6">
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-xl font-semibold tracking-wide sm:text-2xl">
@@ -746,7 +759,7 @@ export default function StudentsPage() {
         </section>
 
         <div className="mt-6 flex min-h-0 flex-1 flex-col gap-4">
-          <section className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1280px] border-collapse text-left">
                 <thead>
@@ -876,7 +889,8 @@ export default function StudentsPage() {
                 </tbody>
               </table>
             </div>
-          <div className="shrink-0 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+          {!isLoading && !errorMessage && totalCount > STUDENTS_PER_PAGE ? (
+            <div className="shrink-0 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
             <p className="text-sm text-slate-600">
               Showing{" "}
               {students.length > 0 ? (currentPage - 1) * STUDENTS_PER_PAGE + 1 : 0}
@@ -950,7 +964,8 @@ export default function StudentsPage() {
                 </svg>
               </button>
             </div>
-          </div>
+            </div>
+          ) : null}
           </section>
         </div>
       </div>

@@ -17,6 +17,7 @@ const studentMenuItems = [
   { label: "Blog", href: "/#blog", color: "text-[#9fb549]" },
   { label: "Contact", href: "/#contact", color: "text-[#5c40c8]" },
 ];
+const SIDEBAR_TOGGLE_EVENT = "school-sidebar-toggle";
 
 function LogoMark() {
   return (
@@ -180,6 +181,7 @@ export default function Header({
   const [schoolInfo, setSchoolInfo] = useState({
     username: "",
     schoolName: "",
+    locationName: "",
     role: "",
     is_head_master:"",
     name:"",
@@ -202,6 +204,13 @@ export default function Header({
     window.location.replace("/");
   };
 
+  const handleSidebarToggle = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent(SIDEBAR_TOGGLE_EVENT));
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -214,6 +223,14 @@ export default function Header({
         setSchoolInfo({
           username: data.username || "",
           schoolName: data.school?.name || data.company?.name || "",
+          locationName:
+            data.school?.location_name ||
+            data.school?.location ||
+            data.school?.city ||
+            data.company?.location_name ||
+            data.company?.location ||
+            data.company?.city ||
+            "",
           role: data.role || "",
           is_head_master: data.is_head_master || "",
           name: data.name || "",
@@ -338,17 +355,41 @@ export default function Header({
   return (
     <header className="fixed inset-x-0 top-0 z-[80] border-y border-[#d9d9d9] bg-[#efefef]">
       <div className="mx-auto flex h-[74px] w-full items-center justify-between px-3 md:px-5 lg:px-6">
-        <Link href="/" className="flex items-center gap-3 no-underline">
+        <div className="flex items-center gap-2 md:gap-3">
+          <button
+            type="button"
+            onClick={handleSidebarToggle}
+            aria-label="Toggle sidebar"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <Link href="/" className="flex items-center gap-3 no-underline">
           {/* <LogoMark /> */}
-          <span className="text-[14px] md:text-[24px] font-semibold leading-none tracking-[-0.01em] text-[#202020]"
->
-            {schoolInfo.schoolName
-              ? `${schoolInfo.schoolName}`
-              : ""}
-
-              {/* Bharat Sevasram Organization */}
+          <span className="flex flex-col text-[#202020]">
+            <span className="text-[14px] md:text-[24px] font-semibold leading-none tracking-[-0.01em]">
+              {schoolInfo.schoolName ? `${schoolInfo.schoolName}` : ""}
+            </span>
+            {schoolInfo.locationName ? (
+              
+              <span className="mt-1 text-[11px] font-medium leading-none text-[#000000] md:text-[13px]">
+                Location&nbsp;:&nbsp;(&nbsp;{schoolInfo.locationName}&nbsp;)
+              </span>
+            ) : null}
           </span>
-        </Link>
+          </Link>
+        </div>
 
         <div className="hidden items-center gap-4 md:flex">
           <NavLinks

@@ -491,7 +491,7 @@ function IPDRegistrationFormContent() {
     try {
       const data = await get_Hospital_User_Login_Details(username);
       const resolvedCompanyId =
-        data?.company_id || data?.companies?.[0]?.company_id;
+        data?.company_id || data?.companies?.[0]?.company_id || localStorage.getItem("company_id");
       if (resolvedCompanyId) {
         setCompanyId(resolvedCompanyId);
       }

@@ -7,10 +7,14 @@ import DelistConfirmDialog from "@/components/ui/DelistConfirmDialog";
 import DialogStudentFeesCollection from "@/components/ui/DialogStudentFeesCollection";
 import DialogStudentFessCollectionHistory from "@/components/ui/DialogStudentFessCollectionHistory";
 import {
+  createReceiptVoucher,
   createStudentFeesCollection,
   delistStudentFeesCollection,
+  generateReceiptVoucherId,
   getClassFeeStructureList,
   getCurrentSchoolInfo,
+  getReceiptVoucherCreditAccounts,
+  getReceiptVoucherDebitAccounts,
   getStudentAcademicRecordList,
   getStudentFeesCollectionById,
   getStudentFeesCollectionList,
@@ -23,6 +27,35 @@ function formatAmount(value) {
     return "0.00";
   }
   return parsed.toFixed(2);
+}
+
+function parseAmount(value) {
+  const parsed = Number.parseFloat(String(value ?? "0"));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeReceiptPaymentMethod(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "CASH" || normalized === "ONLINE") {
+    return normalized;
+  }
+  return "ONLINE";
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(parsed);
 }
 
 function resolveDefaultAcademicYearLabel(academicYearLabels = []) {
@@ -108,18 +141,33 @@ function FilterSelect({
   onChange,
   options,
   placeholder,
+  searchable = false,
+  searchPlaceholder = "Search...",
   disabled = false,
   contentWidthCh = null,
   className = "",
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [menuStyle, setMenuStyle] = useState(null);
   const containerRef = useRef(null);
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   const selectedOption = options.find((option) => String(option?.id) === String(value || ""));
   const selectedLabel = String(selectedOption?.label || "").trim();
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = String(searchTerm || "").trim().toLowerCase();
+    if (!searchable || !normalizedQuery) {
+      return options;
+    }
+    return options.filter((option) =>
+      String(option?.label || "")
+        .toLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [options, searchTerm, searchable]);
 
   const updateMenuPosition = () => {
     const buttonElement = buttonRef.current;
@@ -193,6 +241,22 @@ function FilterSelect({
     };
   }, [disabled, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm("");
+      return undefined;
+    }
+    if (!searchable) {
+      return undefined;
+    }
+    const focusId = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => {
+      window.cancelAnimationFrame(focusId);
+    };
+  }, [isOpen, searchable]);
+
   const isDynamicWidth = Number.isFinite(contentWidthCh) && contentWidthCh > 0;
 
   return (
@@ -246,9 +310,21 @@ function FilterSelect({
               }}
               role="listbox"
             >
+              {searchable ? (
+                <div className="border-b border-slate-200 p-2">
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="h-9 w-full rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-800 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                  />
+                </div>
+              ) : null}
               <div className="max-h-full overflow-y-auto p-1">
-                {options.length > 0 ? (
-                  options.map((option) => {
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => {
                     const optionId = String(option?.id || "");
                     const isActive = String(value || "") === optionId;
                     return (
@@ -257,6 +333,7 @@ function FilterSelect({
                         type="button"
                         onClick={() => {
                           onChange(optionId);
+                          setSearchTerm("");
                           setIsOpen(false);
                         }}
                         className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition ${
@@ -284,6 +361,7 @@ function FilterSelect({
 }
 
 export default function StudentFeesCollectionPage() {
+  const PAGE_SIZE = 5;
   const [collections, setCollections] = useState([]);
   const [studentAcademicOptions, setStudentAcademicOptions] = useState([]);
   const [feeStructureOptions, setFeeStructureOptions] = useState([]);
@@ -303,7 +381,25 @@ export default function StudentFeesCollectionPage() {
   const [currentUserRole, setCurrentUserRole] = useState("");
   const [isAccessDeniedDialogOpen, setIsAccessDeniedDialogOpen] = useState(false);
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
+  const [isReceiptVoucherOpen, setIsReceiptVoucherOpen] = useState(false);
+  const [receiptSourceCollection, setReceiptSourceCollection] = useState(null);
+  const [receiptVoucherForm, setReceiptVoucherForm] = useState({
+    drAccount: "",
+    crAccount: "",
+    voucherDate: "",
+    amount: "",
+    method: "ONLINE",
+    docNumber: "",
+    description: "",
+  });
+  const [receiptVoucherId, setReceiptVoucherId] = useState("");
+  const [receiptDebitAccounts, setReceiptDebitAccounts] = useState([]);
+  const [receiptCreditAccounts, setReceiptCreditAccounts] = useState([]);
+  const [isReceiptBootstrapping, setIsReceiptBootstrapping] = useState(false);
+  const [isReceiptSaving, setIsReceiptSaving] = useState(false);
+  const [receiptFormError, setReceiptFormError] = useState("");
   const [hasUserSelectedAcademicYearFilter, setHasUserSelectedAcademicYearFilter] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     academicYear: "",
     className: "",
@@ -589,6 +685,56 @@ export default function StudentFeesCollectionPage() {
     setIsHistoryDialogOpen(true);
   };
 
+  const handleOpenReceiptVoucher = (item) => {
+    setActiveMenu(null);
+    const studentName = String(item?.student_name || "").trim();
+    const className = String(item?.class_name || "").trim();
+    const sectionName = String(item?.section_name || item?.section || "").trim();
+    const rollNo = String(
+      item?.roll_no || item?.rollNo || item?.roll_number || item?.rollNumber || "",
+    ).trim();
+    const receiptMethod = normalizeReceiptPaymentMethod(item?.payment_mode);
+    setReceiptSourceCollection(item || null);
+    setReceiptVoucherForm({
+      drAccount: "",
+      crAccount: "",
+      voucherDate: new Date().toISOString().split("T")[0],
+      amount: String(parseAmount(item?.paid_amount || 0)),
+      method: receiptMethod,
+      docNumber: item?.transaction_id || "",
+      description: [
+        studentName ? `Student: ${studentName}` : "",
+        className ? `Class: ${className}` : "",
+        sectionName ? `Section: ${sectionName}` : "",
+        rollNo ? `Roll: ${rollNo}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    });
+    setReceiptVoucherId("");
+    setReceiptFormError("");
+    setIsReceiptVoucherOpen(true);
+  };
+
+  const handleCloseReceiptVoucher = () => {
+    if (isReceiptSaving) return;
+    setIsReceiptVoucherOpen(false);
+    setReceiptSourceCollection(null);
+    setReceiptVoucherForm({
+      drAccount: "",
+      crAccount: "",
+      voucherDate: "",
+      amount: "",
+      method: "ONLINE",
+      docNumber: "",
+      description: "",
+    });
+    setReceiptVoucherId("");
+    setReceiptDebitAccounts([]);
+    setReceiptCreditAccounts([]);
+    setReceiptFormError("");
+  };
+
   const handleConfirmDelist = async () => {
     if (!delistTarget?.id) {
       return;
@@ -745,7 +891,7 @@ export default function StudentFeesCollectionPage() {
   }, []);
 
   const filteredCollections = useMemo(() => {
-    return (Array.isArray(collections) ? collections : []).filter((item) => {
+    const filtered = (Array.isArray(collections) ? collections : []).filter((item) => {
       const studentFilterId = getCollectionStudentFilterId(item);
       const academicYear = String(item?.academic_year_name || "").trim();
       const className = String(item?.class_name || "").trim();
@@ -761,7 +907,39 @@ export default function StudentFeesCollectionPage() {
       }
       return true;
     });
+
+    return filtered.sort((left, right) => {
+      const leftStudentName = String(left?.student_name || "").trim();
+      const rightStudentName = String(right?.student_name || "").trim();
+      const nameComparison = leftStudentName.localeCompare(rightStudentName, undefined, {
+        sensitivity: "base",
+      });
+      if (nameComparison !== 0) {
+        return nameComparison;
+      }
+      return String(left?.id || "").localeCompare(String(right?.id || ""));
+    });
   }, [collections, filters]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredCollections.length / PAGE_SIZE)),
+    [filteredCollections.length, PAGE_SIZE],
+  );
+
+  const paginatedCollections = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredCollections.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [currentPage, filteredCollections, PAGE_SIZE]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters.studentName, filters.academicYear, filters.className]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     if (hasUserSelectedAcademicYearFilter) {
@@ -819,13 +997,104 @@ export default function StudentFeesCollectionPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isReceiptVoucherOpen || !companyId) return;
+    let isMounted = true;
+    const bootstrap = async () => {
+      setIsReceiptBootstrapping(true);
+      setReceiptFormError("");
+      try {
+        const [debitAccounts, creditAccounts, voucherId] = await Promise.all([
+          getReceiptVoucherDebitAccounts(),
+          getReceiptVoucherCreditAccounts(),
+          generateReceiptVoucherId(companyId),
+        ]);
+        if (!isMounted) return;
+        setReceiptDebitAccounts(Array.isArray(debitAccounts) ? debitAccounts : []);
+        setReceiptCreditAccounts(Array.isArray(creditAccounts) ? creditAccounts : []);
+        setReceiptVoucherId(voucherId || "");
+      } catch (_error) {
+        if (!isMounted) return;
+        setReceiptFormError("Unable to load receipt voucher accounts.");
+      } finally {
+        if (isMounted) {
+          setIsReceiptBootstrapping(false);
+        }
+      }
+    };
+    bootstrap();
+    return () => {
+      isMounted = false;
+    };
+  }, [isReceiptVoucherOpen, companyId]);
+
+  const handleReceiptVoucherSubmit = async (event) => {
+    event.preventDefault();
+    if (!companyId) {
+      setReceiptFormError("Company context missing.");
+      return;
+    }
+    if (!receiptVoucherForm.drAccount) {
+      setReceiptFormError("Select Receipt In A/c (Dr.).");
+      return;
+    }
+    if (!receiptVoucherForm.crAccount) {
+      setReceiptFormError("Select Paid By (Cr.).");
+      return;
+    }
+    if (!receiptVoucherForm.amount || Number(receiptVoucherForm.amount) <= 0) {
+      setReceiptFormError("Enter valid receipt amount.");
+      return;
+    }
+    if (!receiptVoucherForm.voucherDate) {
+      setReceiptFormError("Transaction date is required.");
+      return;
+    }
+
+    const username =
+      (typeof window !== "undefined" &&
+        (localStorage.getItem("user_display_name") ||
+          localStorage.getItem("user_name") ||
+          localStorage.getItem("username") ||
+          localStorage.getItem("user"))) ||
+      "Web User";
+
+    setIsReceiptSaving(true);
+    setReceiptFormError("");
+    try {
+      await createReceiptVoucher({
+        company_id: companyId,
+        voucher_id: receiptVoucherId || null,
+        voucher_table_id: null,
+        transaction_id: null,
+        voucher_date: receiptVoucherForm.voucherDate,
+        amount: Number(receiptVoucherForm.amount) || 0,
+        dr_account_name_id: Number(receiptVoucherForm.drAccount),
+        cr_account_name_id: Number(receiptVoucherForm.crAccount),
+        description: receiptVoucherForm.description || "",
+        payment_mode: receiptVoucherForm.method || "ONLINE",
+        reference_no: receiptVoucherForm.docNumber || "",
+        created_by: username,
+      });
+      handleCloseReceiptVoucher();
+    } catch (error) {
+      setReceiptFormError(
+        error?.response?.data?.msg ||
+          error?.response?.data?.response ||
+          "Unable to save receipt voucher.",
+      );
+    } finally {
+      setIsReceiptSaving(false);
+    }
+  };
+
   return (
     <main className="dashboard-shell h-screen overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full w-full flex-col px-3 pb-4 pt-16 sm:px-6 lg:px-8 lg:pt-8">
-        <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-5 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:px-6">
-          <div className="flex items-center justify-between gap-2 sm:gap-3">
+      <div className="flex h-full w-full flex-col px-2 pb-3 pt-4 sm:px-6 sm:pb-4 lg:px-8 lg:pt-8">
+        <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-2.5 py-3 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:px-6 sm:py-5">
+          <div className="flex items-center justify-between gap-1.5 sm:gap-3">
             <h1 className="min-w-0 flex-1 text-lg font-semibold leading-tight tracking-wide sm:text-2xl">
-              Student Fees Collection
+              Student Fees Collection List
             </h1>
 
             <div className="hidden items-center gap-2 lg:flex">
@@ -837,6 +1106,8 @@ export default function StudentFeesCollectionPage() {
                 options={studentFilterOptions}
                 placeholder="All students"
                 contentWidthCh={studentFilterWidthCh}
+                searchable
+                searchPlaceholder="Search student..."
               />
               <FilterSelect
                 value={filters.academicYear}
@@ -875,7 +1146,7 @@ export default function StudentFeesCollectionPage() {
               </button>
             </div>
 
-            <button
+            {/* <button
               type="button"
               onClick={handleOpenCreate}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/80 bg-white text-sky-700 shadow-sm transition hover:bg-sky-50 lg:hidden"
@@ -895,11 +1166,11 @@ export default function StudentFeesCollectionPage() {
                 <path d="M12 5v14" />
                 <path d="M5 12h14" />
               </svg>
-            </button>
+            </button> */}
           </div>
 
-          <div className="mt-3 grid gap-2 lg:hidden">
-            <div className="grid grid-cols-2 gap-2">
+          <div className="mt-2.5 grid gap-1.5 lg:hidden">
+            <div className="grid grid-cols-2 gap-1.5">
               <FilterSelect
                 value={filters.studentName}
                 onChange={(selectedValue) =>
@@ -908,6 +1179,8 @@ export default function StudentFeesCollectionPage() {
                 options={studentFilterOptions}
                 placeholder="All students"
                 className="min-w-0 w-full"
+                searchable
+                searchPlaceholder="Search student..."
               />
               <FilterSelect
                 value={filters.academicYear}
@@ -920,7 +1193,7 @@ export default function StudentFeesCollectionPage() {
                 className="min-w-0 w-full"
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1.5">
               <FilterSelect
                 value={filters.className}
                 onChange={(selectedValue) =>
@@ -945,7 +1218,7 @@ export default function StudentFeesCollectionPage() {
             </div>
         </section>
 
-        <section className="mt-6 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+        <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:mt-6 sm:p-5">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1380px] border-collapse text-left">
               <thead>
@@ -959,10 +1232,10 @@ export default function StudentFeesCollectionPage() {
                   <th className="px-2 py-3 font-semibold">Total</th>
                   <th className="px-2 py-3 font-semibold">Paid</th>
                   <th className="px-2 py-3 font-semibold">Due</th>
-                  <th className="px-2 py-3 font-semibold">Payment Date</th>
+                  {/* <th className="px-2 py-3 font-semibold">Payment Date</th>
                   <th className="px-2 py-3 font-semibold">Payment Mode</th>
                   <th className="px-2 py-3 font-semibold">Status</th>
-                  <th className="px-2 py-3 font-semibold">Transaction ID</th>
+                  <th className="px-2 py-3 font-semibold">Transaction ID</th> */}
                   <th className="px-2 py-3 font-semibold">Action</th>
                 </tr>
               </thead>
@@ -991,25 +1264,27 @@ export default function StudentFeesCollectionPage() {
                   </tr>
                 ) : null}
 
-                {filteredCollections.map((item, index) => (
+                {paginatedCollections.map((item, index) => (
                   <tr key={item.id} className="border-b border-slate-100 text-sm text-slate-700">
-                    <td className="px-2 py-3 font-medium text-slate-800">{index + 1}</td>
+                    <td className="px-2 py-3 font-medium text-slate-800">
+                      {(currentPage - 1) * PAGE_SIZE + index + 1}
+                    </td>
                     <td className="px-2 py-3">{item.student_name || "-"}</td>
                     <td className="px-2 py-3">{item.academic_year_name || "-"}</td>
                     <td className="px-2 py-3">{item.class_name || "-"}</td>
                     <td className="px-2 py-3">{item.installment_name_display || item.installment_name || "-"}</td>
-                    <td className="px-2 py-3">{item.due_date || "-"}</td>
+                    <td className="px-2 py-3">{formatDate(item.due_date)}</td>
                     <td className="px-2 py-3 font-semibold text-slate-900">{formatAmount(item.total_amount)}</td>
                     <td className="px-2 py-3">{formatAmount(item.paid_amount)}</td>
                     <td className="px-2 py-3">{formatAmount(item.due_amount)}</td>
-                    <td className="px-2 py-3">{item.payment_date || "-"}</td>
+                    {/* <td className="px-2 py-3">{item.payment_date || "-"}</td>
                     <td className="px-2 py-3">{item.payment_mode_display || item.payment_mode || "-"}</td>
                     <td className="px-2 py-3">
                       <span className={statusClassName(item.status)}>
                         {item.status_display || item.status || "-"}
                       </span>
                     </td>
-                    <td className="px-2 py-3">{item.transaction_id || "-"}</td>
+                    <td className="px-2 py-3">{item.transaction_id || "-"}</td> */}
                     <td className="px-2 py-3">
                       <button
                         type="button"
@@ -1035,6 +1310,31 @@ export default function StudentFeesCollectionPage() {
               </tbody>
             </table>
           </div>
+          {!isLoading && !errorMessage && filteredCollections.length > PAGE_SIZE ? (
+            <div className="mt-3 shrink-0 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+              <p className="text-xs text-slate-600 sm:text-sm">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={isLoading || currentPage === 1}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={isLoading || currentPage === totalPages}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 
@@ -1101,6 +1401,13 @@ export default function StudentFeesCollectionPage() {
               )}
               <button
                 type="button"
+                onClick={() => handleOpenReceiptVoucher(activeMenu.item)}
+                className="block w-full px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
+              >
+                Receipt Voucher
+              </button>
+              <button
+                type="button"
                 onClick={() => handleReview(activeMenu.item)}
                 className="block w-full px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
               >
@@ -1132,6 +1439,196 @@ export default function StudentFeesCollectionPage() {
             </div>,
             document.body,
           )
+        : null}
+
+      {isReceiptVoucherOpen && typeof document !== "undefined"
+        ? createPortal(
+        <div className="fixed inset-0 z-[3200] flex items-end justify-center overflow-y-auto p-2 sm:items-center sm:p-4">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={handleCloseReceiptVoucher} />
+          <div className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-1.5rem)] sm:rounded-3xl">
+            <div className="flex items-center justify-between bg-blue-800 px-4 py-4 text-white sm:px-6">
+              <div>
+                <h3 className="text-xl font-semibold sm:text-2xl"> Receipt Voucher</h3>
+                {/* <p className="hidden text-xs text-white/80 lg:block lg:text-sm">
+                  Record incoming receipts against your accounts.
+                </p> */}
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseReceiptVoucher}
+                className="rounded-full border border-white/30 p-2 hover:bg-white/10"
+                disabled={isReceiptSaving}
+              >
+                <span className="text-lg">&times;</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleReceiptVoucherSubmit} className="min-h-0 space-y-4 overflow-y-auto px-3 py-3 sm:px-6 sm:py-6">
+              {receiptFormError ? (
+                <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {receiptFormError}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 rounded-xl border border-slate-200 bg-white md:grid-cols-2">
+                <div className="flex flex-col border-b border-slate-200 p-3 sm:p-4 md:border-b-0 md:border-r">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Receipt In A/c (Dr.) <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={receiptVoucherForm.drAccount}
+                    onChange={(event) =>
+                      setReceiptVoucherForm((prev) => ({ ...prev, drAccount: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-[16px] leading-5 text-slate-800 outline-none sm:text-sm"
+                    required
+                    disabled={isReceiptBootstrapping || isReceiptSaving}
+                  >
+                    <option value="">Select Account</option>
+                    {receiptDebitAccounts.map((account) => (
+                      <option key={`receipt-dr-${account.id}`} value={account.id}>
+                        {account.account_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col p-3 sm:p-4">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Paid By (Cr.) <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={receiptVoucherForm.crAccount}
+                    onChange={(event) =>
+                      setReceiptVoucherForm((prev) => ({ ...prev, crAccount: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-[16px] leading-5 text-slate-800 outline-none sm:text-sm"
+                    required
+                    disabled={isReceiptBootstrapping || isReceiptSaving}
+                  >
+                    <option value="">Select Account</option>
+                    {receiptCreditAccounts.map((account) => (
+                      <option key={`receipt-cr-${account.id}`} value={account.id}>
+                        {account.account_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 rounded-xl border border-slate-200 bg-white md:grid-cols-2">
+                <div className="flex flex-col border-b border-slate-200 p-3 sm:p-4 md:border-b-0 md:border-r">
+                  <label className="text-sm font-semibold text-slate-700">Transaction Date :</label>
+                  <input
+                    type="date"
+                    value={receiptVoucherForm.voucherDate}
+                    onChange={(event) =>
+                      setReceiptVoucherForm((prev) => ({ ...prev, voucherDate: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-[16px] leading-5 text-slate-800 outline-none sm:text-sm"
+                    required
+                    disabled={isReceiptSaving}
+                  />
+                </div>
+                <div className="flex flex-col p-3 sm:p-4">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Receipt Amount (₹) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={receiptVoucherForm.amount}
+                    onChange={(event) =>
+                      setReceiptVoucherForm((prev) => ({ ...prev, amount: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-right text-[16px] leading-5 text-slate-800 outline-none sm:text-sm"
+                    required
+                    disabled={isReceiptSaving}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 rounded-xl border border-slate-200 bg-white md:grid-cols-2">
+                <div className="flex flex-col border-b border-slate-200 p-3 sm:p-4 md:border-b-0 md:border-r">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Payment Method <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="mt-2 flex flex-wrap gap-4">
+                    {["CASH", "ONLINE", "CARD", "CHECK"].map((method) => (
+                      <label key={method} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="radio"
+                          name="receipt-payment-method"
+                          value={method}
+                          checked={receiptVoucherForm.method === method}
+                          onChange={(event) =>
+                            setReceiptVoucherForm((prev) => ({ ...prev, method: event.target.value }))
+                          }
+                          disabled={isReceiptSaving}
+                        />
+                        {method}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-col p-3 sm:p-4">
+                  <label className="text-sm font-semibold text-slate-700">Document Number</label>
+                  <input
+                    type="text"
+                    value={receiptVoucherForm.docNumber}
+                    onChange={(event) =>
+                      setReceiptVoucherForm((prev) => ({ ...prev, docNumber: event.target.value }))
+                    }
+                    placeholder="Optional"
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-[16px] leading-5 text-slate-800 outline-none sm:text-sm"
+                    disabled={isReceiptSaving}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 rounded-xl border border-slate-200 bg-white md:grid-cols-2">
+                <div className="flex flex-col border-b border-slate-200 p-3 sm:p-4 md:border-b-0 md:border-r">
+                  <label className="text-sm font-semibold text-slate-700">Description</label>
+                  <textarea
+                    rows={2}
+                    value={receiptVoucherForm.description}
+                    onChange={(event) =>
+                      setReceiptVoucherForm((prev) => ({ ...prev, description: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-[16px] leading-5 text-slate-800 outline-none sm:text-sm"
+                    disabled={isReceiptSaving}
+                  />
+                </div>
+                <div className="flex flex-col p-3 sm:p-4 text-sm text-slate-600">
+                  <span className="font-semibold text-slate-700">Voucher ID :</span>
+                  <span>{receiptVoucherId || "-"}</span>
+                  <span className="mt-2 font-semibold text-slate-700">Fees Collection ID :</span>
+                  <span>{receiptSourceCollection?.id || "-"}</span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-slate-200 px-1 pt-4">
+                <button
+                  type="button"
+                  onClick={handleCloseReceiptVoucher}
+                  className="rounded-full border border-slate-300 px-5 py-2 font-medium text-slate-700 hover:bg-slate-50"
+                  disabled={isReceiptSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-full bg-blue-700 px-6 py-2 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                  disabled={isReceiptSaving || isReceiptBootstrapping}
+                >
+                  {isReceiptSaving ? "Saving..." : "Save & Close"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body,
+      )
         : null}
 
       <DelistConfirmDialog

@@ -935,6 +935,7 @@ function FilterSelect({
 }
 
 export default function ExamMarksPage() {
+  const PAGE_SIZE = 5;
   const [marksList, setMarksList] = useState([]);
   const [classOptions, setClassOptions] = useState([]);
   const [academicYearOptions, setAcademicYearOptions] = useState([]);
@@ -984,6 +985,7 @@ export default function ExamMarksPage() {
   const [accessDeniedMessage, setAccessDeniedMessage] = useState("");
   const [recentlyAddedMarkId, setRecentlyAddedMarkId] = useState("");
   const [studentAttachmentPreviews, setStudentAttachmentPreviews] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
   const recentlyAddedMarkTimerRef = useRef(null);
 
   const studentRecordById = useMemo(() => {
@@ -1184,6 +1186,27 @@ export default function ExamMarksPage() {
       return Number(left.id) - Number(right.id);
     });
   }, [groupedMarksList, studentRecordById]);
+
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(sortedMarksList.length / PAGE_SIZE)),
+    [sortedMarksList.length, PAGE_SIZE],
+  );
+
+  const paginatedMarksList = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return sortedMarksList.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [currentPage, sortedMarksList, PAGE_SIZE]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedAcademicYearId, selectedClassId, selectedSectionId, selectedExamScheduleId]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const tableMinWidth = 1220 + subjectMarkColumns.length * 140;
 
   useEffect(() => {
@@ -1981,7 +2004,7 @@ export default function ExamMarksPage() {
 
   return (
     <main className="dashboard-shell h-full min-h-0 overflow-hidden bg-slate-100 text-slate-900">
-      <div className="flex h-full min-h-0 w-full flex-col px-3 pb-4 pt-16 sm:px-6 lg:px-8 lg:pt-8">
+      <div className="flex h-full min-h-0 w-full flex-col px-3 pb-4 pt-6 sm:px-6 lg:px-8 lg:pt-8">
         <section className="shrink-0 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-700 via-cyan-700 to-teal-700 px-4 py-4 text-white shadow-[0_16px_34px_rgba(14,116,144,0.25)] sm:px-6 sm:py-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
@@ -2130,8 +2153,8 @@ export default function ExamMarksPage() {
           </div>
         </section>
 
-        <section className="mt-6 min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
-          <div className="h-full overflow-auto">
+        <section className="mt-6 min-h-0 flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:p-5">
+          <div className="min-h-0 flex-1 overflow-auto">
             <table
               className="w-full border-collapse text-left"
               style={{ minWidth: `${tableMinWidth}px` }}
@@ -2181,7 +2204,7 @@ export default function ExamMarksPage() {
                   </tr>
                 ) : null}
 
-                {!isLoading && !errorMessage && marksList.length === 0 ? (
+                {!isLoading && !errorMessage && sortedMarksList.length === 0 ? (
                   <tr className="border-b border-slate-100 text-sm text-slate-700">
                     <td className="px-2 py-3" colSpan={14 + subjectMarkColumns.length}>
                       No student exam marks found.
@@ -2189,7 +2212,7 @@ export default function ExamMarksPage() {
                   </tr>
                 ) : null}
 
-                {sortedMarksList.map((item, index) => {
+                {paginatedMarksList.map((item) => {
                   const studentRecord = item.studentRecord || studentRecordById.get(String(item.student_record_id));
                   const examSchedule = examScheduleById.get(String(item.latestRecord?.exam_schedule_id || ""));
                   const showGrade = shouldShowGradeForExamSchedule(examSchedule);
@@ -2403,6 +2426,31 @@ export default function ExamMarksPage() {
               </tbody>
             </table>
           </div>
+          {!isLoading && !errorMessage && sortedMarksList.length > 0 ? (
+            <div className="mt-3 shrink-0 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+              <p className="text-xs text-slate-600 sm:text-sm">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 
