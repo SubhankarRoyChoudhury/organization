@@ -60,6 +60,7 @@ export const clearLoginSession = () => {
   localStorage.removeItem("company_options");
   localStorage.removeItem("company_main_group");
   localStorage.removeItem("company_sub_group");
+  localStorage.removeItem("company_user_role");
   clearStoredLocaleSettings();
   window.dispatchEvent(new Event("session-context-changed"));
 };

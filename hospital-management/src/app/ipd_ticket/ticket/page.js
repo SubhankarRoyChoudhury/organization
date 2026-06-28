@@ -57,7 +57,7 @@ function OPDPatientCardContent() {
         currentUser?.companyInfo?.company_thumbnail_image_url || "",
       );
       const primaryCompany = data?.companies?.[0] || {};
-      const resolvedCompanyId = data?.company_id || primaryCompany?.company_id || localStorage.getItem("company_id");
+      const resolvedCompanyId = data?.company_id || primaryCompany?.company_id;
       setCompanyMeta({
         name:
           data?.company_name ||

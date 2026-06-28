@@ -93,7 +93,7 @@ export default function RoomsPage() {
       const data = await get_Hospital_User_Login_Details(username);
       setLoggedInDetails(data);
       const resolvedCompanyId =
-        data?.company_id || data?.companies?.[0]?.company_id || localStorage.getItem("company_id");
+        data?.company_id || data?.companies?.[0]?.company_id;
       fetchWards(resolvedCompanyId);
       fetchRooms(resolvedCompanyId);
       fetchBeds(resolvedCompanyId);

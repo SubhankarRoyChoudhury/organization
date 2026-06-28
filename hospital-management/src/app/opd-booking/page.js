@@ -576,7 +576,7 @@ function OPDBookingPageContent() {
       if (!hasLockedCompany) {
         // const parsed = sanitizeCompanyId(data?.company_id);
         const resolvedCompanyId =
-          data?.company_id || data?.companies?.[0]?.company_id || localStorage.getItem("company_id");
+          data?.company_id || data?.companies?.[0]?.company_id;
         if (resolvedCompanyId) {
           setCompanyId(resolvedCompanyId);
           setCompanyError(null);

@@ -172,7 +172,7 @@ export function get_Hospital_User_Login_Details(username) {
   const access_token = localStorage.getItem("access_token");
 
   return axios
-    .post(`${BASE_URL}authentication/user_info/`, {
+    .post(`${BASE_URL}hospital_accounts/user_info/`, {
       access_token,
     })
     .then((response) => {
@@ -200,14 +200,25 @@ export function getCompanyUserDetailsByUsername(username) {
   if (!username) {
     return Promise.reject(new Error("username is required"));
   }
+  const access_token = localStorage.getItem("access_token");
   return axios
     .get(
       `${BASE_URL}account/getCompanyUserDetailsbyusername/${encodeURIComponent(
         username,
       )}/`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          ...(access_token ? { Authorization: `Bearer ${access_token}` } : {}),
+        },
+      },
     )
     .then((response) => response.data?.details || [])
     .catch((error) => {
+      const status = error?.response?.status;
+      if (status === 400 || status === 403 || status === 404) {
+        return [];
+      }
       console.error(
         "Error fetching CompanyUser details:",
         error.response?.data || error,

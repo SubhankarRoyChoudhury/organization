@@ -88,6 +88,8 @@ export default function LoginPage() {
       let companySubGroup = "";
       let linkedCompanyId = "";
       let hasLinkedCompanyUser = false;
+      let companyUserRole = "";
+      let primaryCompanyUserIsAdmin = false;
       try {
         const companyUserDetails = await getCompanyUserDetailsByUsername(
           user.username || loginIdentifier,
@@ -96,6 +98,10 @@ export default function LoginPage() {
           ? companyUserDetails.details[0]
           : null;
         hasLinkedCompanyUser = Boolean(primaryCompanyUser);
+        companyUserRole = String(primaryCompanyUser?.role || "").trim().toLowerCase();
+        primaryCompanyUserIsAdmin = Boolean(
+          primaryCompanyUser?.is_admin || primaryCompanyUser?.is_owner,
+        );
         linkedCompanyId = String(
           primaryCompanyUser?.company_id ||
           primaryCompanyUser?.company ||
@@ -151,6 +157,19 @@ export default function LoginPage() {
         // Keep default redirect when status lookup fails.
       }
 
+      // Any hospital company admin/owner is treated as swasthya_admin even if
+      // their CompanyUser.role is still "admin" (created before the role field was added).
+      if (
+        companyMainGroup === "swasthya" &&
+        companySubGroup === "hospital" &&
+        (primaryCompanyUserIsAdmin || companyUserRole === "swasthya_admin")
+      ) {
+        companyUserRole = "swasthya_admin";
+      }
+      if (companyUserRole) {
+        localStorage.setItem("company_user_role", companyUserRole);
+      }
+
       const isCompanyUser =
         hasLinkedCompanyUser ||
         String(user?.user_type || data?.user_type || "")
@@ -162,7 +181,9 @@ export default function LoginPage() {
         postLoginRoute = "/clinic-management/";
         matchedCompanyRoleRoute = true;
       } else if (isCompanyUser && companyMainGroup === "swasthya" && companySubGroup === "hospital") {
-        postLoginRoute = "/hospital-management/administration_dashboard/";
+        postLoginRoute = companyUserRole === "swasthya_admin"
+          ? "/hospital-management/admin_dashboard/"
+          : "/hospital-management/administration_dashboard/";
         matchedCompanyRoleRoute = true;
       } else if (isCompanyUser && companyMainGroup === "vidya" && companySubGroup === "school") {
         postLoginRoute = "/school-management/dashboard/";

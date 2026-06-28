@@ -23,7 +23,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { get_Hospital_User_Login_Details } from "@/app/api/apiService";
+import {
+  get_Hospital_User_Login_Details,
+  getCompanyUserDetailsByUsername,
+} from "@/app/api/apiService";
 
 export default function Sidebar({ isOpen, onClose, isDesktop }) {
   const [openMenu, setOpenMenu] = useState(null);
@@ -33,6 +36,7 @@ export default function Sidebar({ isOpen, onClose, isDesktop }) {
   const [userAffiliation, setUserAffiliation] = useState(null);
   const [userSummary, setUserSummary] = useState("");
   const [isAdminRole, setIsAdminRole] = useState(false);
+  const [isSwasthyaAdmin, setIsSwasthyaAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
 
@@ -102,6 +106,19 @@ export default function Sidebar({ isOpen, onClose, isDesktop }) {
         }
 
         if (username) {
+          // Check CompanyUser role independently first so it is set even if
+          // get_Hospital_User_Login_Details throws for this user type.
+          try {
+            const companyUserDetails = await getCompanyUserDetailsByUsername(username);
+            const primaryCompanyUser = Array.isArray(companyUserDetails)
+              ? companyUserDetails[0]
+              : null;
+            const companyRole = String(primaryCompanyUser?.role || "").trim().toLowerCase();
+            setIsSwasthyaAdmin(companyRole === "swasthya_admin");
+          } catch {
+            // keep default false
+          }
+
           const userDetails = await get_Hospital_User_Login_Details(username);
 
           const roles = userDetails?.user?.roles || [];
@@ -538,13 +555,22 @@ export default function Sidebar({ isOpen, onClose, isDesktop }) {
   //     ? doctorMenu
   //     : adminMenu;
 
-  const menuItems = isAdminRole
-    ? superuserMenu
-    : userRoles.includes("administration")
-      ? adminMenu
-      : userRoles.includes("doctor")
-        ? doctorMenu
-        : adminMenu;
+  const storedCompanyUserRole =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("company_user_role") || "").trim().toLowerCase()
+      : "";
+
+  const menuItems =
+    storedCompanyUserRole === "swasthya_admin" ||
+    isSwasthyaAdmin ||
+    userRole === "swasthya_admin" ||
+    isAdminRole
+      ? superuserMenu
+      : userRoles.includes("administration")
+        ? adminMenu
+        : userRoles.includes("doctor")
+          ? doctorMenu
+          : adminMenu;
 
   const activeSubPath = useMemo(() => {
     if (!pathname) return null;

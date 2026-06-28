@@ -133,24 +133,27 @@ const generateCompanyUsernamePart = (companyName) => {
 };
 
 const generateUsername = (companyName, adminName, schoolCode) => {
+  const firstNamePart = getFirstNamePart(adminName);
+  const schoolCodePart = getSchoolCodePartForUsername(schoolCode);
+
+  if (firstNamePart && schoolCodePart) {
+    return `${firstNamePart}.${schoolCodePart}`;
+  }
+
+  if (firstNamePart) {
+    return firstNamePart;
+  }
+
   const companyPart = generateCompanyUsernamePart(companyName);
   if (companyPart) {
     return companyPart;
   }
 
-  const firstNamePart = getFirstNamePart(adminName);
-  const schoolCodePart = getSchoolCodePartForUsername(schoolCode);
-
-  if (!firstNamePart && !schoolCodePart) {
-    return "";
-  }
-  if (!schoolCodePart) {
-    return firstNamePart;
-  }
-  if (!firstNamePart) {
+  if (schoolCodePart) {
     return schoolCodePart;
   }
-  return `${firstNamePart}.${schoolCodePart}`;
+
+  return "";
 };
 
 const resolveApiError = (error) => {

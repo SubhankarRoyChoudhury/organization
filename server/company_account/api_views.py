@@ -1049,6 +1049,11 @@ def create_company_account(request):
                 asset=bool(payload.get("asset", False)),
             )
 
+            company_user_role = (
+                "swasthya_admin"
+                if main_group.lower() == "swasthya" and sub_group.lower() == "hospital"
+                else "admin"
+            )
             company_user = CompanyUser.objects.create(
                 company=company,
                 organization_id=str(organization.id),
@@ -1057,7 +1062,7 @@ def create_company_account(request):
                 email=email,
                 mobile=phone_number,
                 address=address or None,
-                role="admin",
+                role=company_user_role,
                 is_superuser=False,
                 is_admin=True,
                 can_access=True,

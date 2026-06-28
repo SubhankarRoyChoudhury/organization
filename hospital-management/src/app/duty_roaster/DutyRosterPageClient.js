@@ -1012,7 +1012,7 @@ export default function DutyRosterPageClient() {
           setLoggedInUsername(resolvedUsername);
         }
         const resolvedCompanyId =
-          data?.company_id || data?.companies?.[0]?.company_id || localStorage.getItem("company_id");
+          data?.company_id || data?.companies?.[0]?.company_id;
         if (resolvedCompanyId) {
           setCompanyId(resolvedCompanyId);
           setCompanyContextError("");
