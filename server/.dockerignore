@@ -1,0 +1,11 @@
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+*.sqlite3
+.env
+media/
+staticfiles/
+readme.md
