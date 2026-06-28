@@ -19,7 +19,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN npm run build -- --webpack 2>/dev/null || npx next build --webpack
 
 FROM node:20-alpine AS runner
 WORKDIR /app

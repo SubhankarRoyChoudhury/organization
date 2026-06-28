@@ -3,6 +3,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     CurrentUserAPIView,
+    GoogleCheckEmailAPIView,
+    GoogleLoginAPIView,
     LoginAPIView,
     LogoutAPIView,
     OrganizationInfoAPIView,
@@ -18,11 +20,12 @@ from .views import (
     RegisterAPIView,
     changeOrganizationUserImage,
     updateOrganizationUserProfile,
-    
 )
 
 urlpatterns = [
     path("register/", RegisterAPIView.as_view(), name="register"),
+    path("google/check-email/", GoogleCheckEmailAPIView.as_view(), name="google-check-email"),
+    path("google/login/", GoogleLoginAPIView.as_view(), name="google-login"),
     path("login/", LoginAPIView.as_view(), name="login"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     path("logout/", LogoutAPIView.as_view(), name="logout"),

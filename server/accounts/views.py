@@ -269,6 +269,38 @@ def _send_organization_user_credentials_email(data):
     sendGenericMailV2(email, subject, message)
 
 
+class GoogleCheckEmailAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        User = get_user_model()
+        email = str(request.query_params.get("email") or "").strip().lower()
+        if not email:
+            return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+        exists = User.objects.filter(email__iexact=email).exists()
+        return Response({"exists": exists, "email": email})
+
+
+class GoogleLoginAPIView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        User = get_user_model()
+        email = str(request.data.get("email") or "").strip().lower()
+        if not email:
+            return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "No account found with this email."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(build_auth_response(user), status=status.HTTP_200_OK)
+
+
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
@@ -1643,8 +1675,10 @@ class OrganizationProvisionAPIView(APIView):
         serializer = OrganizationProvisionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        # Google-authenticated users skip OTP — their email is already verified by Google
+        is_google_signup = bool(request.data.get("is_googleuser") or request.data.get("google_signup"))
         cached_record = cache.get(_email_otp_cache_key(data["email"]))
-        if not cached_record or not cached_record.get("verified"):
+        if not is_google_signup and (not cached_record or not cached_record.get("verified")):
             return Response(
                 {"detail": "Email must be verified before creating organization."},
                 status=status.HTTP_400_BAD_REQUEST,

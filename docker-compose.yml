@@ -20,6 +20,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ./server:/app
       - ./server/media:/app/media
       - ./server/staticfiles:/app/staticfiles
 

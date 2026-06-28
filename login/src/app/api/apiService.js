@@ -112,6 +112,82 @@ export function userLogin(login, password) {
     });
 }
 
+export function googleCheckEmail(email) {
+  return axios
+    .get(`${BASE_URL}auth/google/check-email/`, {
+      params: { email: String(email || "").trim().toLowerCase() },
+    })
+    .then((response) => response.data)
+    .catch((error) => {
+      throw error;
+    });
+}
+
+export function googleLogin(email) {
+  return axios
+    .post(`${BASE_URL}auth/google/login/`, {
+      email: String(email || "").trim().toLowerCase(),
+    })
+    .then((response) => response.data)
+    .catch((error) => {
+      throw error;
+    });
+}
+
+export function sendOrganizationEmailOtp(email) {
+  return axios
+    .post(`${BASE_URL}auth/organizations/email-otp/`, { email })
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error("Error sending OTP:", error.response?.data || error);
+      throw error;
+    });
+}
+
+export function verifyOrganizationEmailOtp(email, otp) {
+  return axios
+    .post(`${BASE_URL}auth/organizations/email-otp/verify/`, { email, otp })
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error("Error verifying OTP:", error.response?.data || error);
+      throw error;
+    });
+}
+
+export function provisionOrganization(payload) {
+  return axios
+    .post(`${BASE_URL}auth/organizations/provision/`, payload)
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error("Error provisioning organization:", error.response?.data || error);
+      throw error;
+    });
+}
+
+export function registerGoogleUser(payload) {
+  return axios
+    .post(`${BASE_URL}auth/register/`, {
+      ...payload,
+      is_googleuser: true,
+      password: payload.password || "google_auth_user",
+    })
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error("Error registering Google user:", error.response?.data || error);
+      throw error;
+    });
+}
+
+export function getPublicCompanyList() {
+  return axios
+    .get(`${BASE_URL}account/getAllCompanies/`)
+    .then((response) => response.data)
+    .catch((error) => {
+      console.error("Error fetching public company list:", error.response?.data || error);
+      throw error;
+    });
+}
+
 export function sendResetPasswordMail(userId, domain) {
   return axios
     .post(`${BASE_URL}account/sendResetPasswordMail/`, {
@@ -629,59 +705,7 @@ export function createOrganization(payload) {
     });
 }
 
-export function provisionOrganization(payload) {
-  const access_token = localStorage.getItem("access_token");
 
-  return axios
-    .post(`${BASE_URL}auth/organizations/provision/`, payload, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(access_token ? { Authorization: `Bearer ${access_token}` } : {}),
-      },
-    })
-    .then((response) => response.data)
-    .catch((error) => {
-      console.error(
-        "Error provisioning organization:",
-        error.response?.data || error,
-      );
-      throw error;
-    });
-}
-
-export function sendOrganizationEmailOtp(email) {
-  return axios
-    .post(`${BASE_URL}auth/organizations/email-otp/`, { email }, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-    .then((response) => response.data)
-    .catch((error) => {
-      console.error(
-        "Error sending organization email OTP:",
-        error.response?.data || error,
-      );
-      throw error;
-    });
-}
-
-export function verifyOrganizationEmailOtp(email, otp) {
-  return axios
-    .post(`${BASE_URL}auth/organizations/email-otp/verify/`, { email, otp }, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-    .then((response) => response.data)
-    .catch((error) => {
-      console.error(
-        "Error verifying organization email OTP:",
-        error.response?.data || error,
-      );
-      throw error;
-    });
-}
 
 export function sendOrganizationInvite(payload) {
   const access_token = localStorage.getItem("access_token");
